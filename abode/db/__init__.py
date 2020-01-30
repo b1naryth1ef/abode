@@ -34,6 +34,10 @@ async def init_db(config, loop):
     await conn.close()
 
 
+async def close_db():
+    get_pool().close()
+
+
 def get_pool():
     return pool
 
@@ -50,7 +54,6 @@ def with_cursor(func):
 
 def build_insert_query(instance, upsert=False):
     dataclass = instance.__class__
-    table_name = dataclass.__name__.lower() + "s"
 
     column_names = []
     column_values = []
@@ -73,7 +76,7 @@ def build_insert_query(instance, upsert=False):
 
     return (
         f"""
-        INSERT INTO {table_name} ({', '.join(column_names)})
+        INSERT INTO {table_name(dataclass)} ({', '.join(column_names)})
         VALUES ({values})
         {upsert_contents}
     """,
@@ -84,11 +87,10 @@ def build_insert_query(instance, upsert=False):
 def build_select_query(instance, where=None):
     dataclass = instance.__class__
     select_fields = ", ".join([field.name for field in dataclasses.fields(dataclass)])
-    table_name = dataclass.__name__.lower() + "s"
     where = f"WHERE {where}" if where else ""
 
     return f"""
-        SELECT {select_fields} FROM {table_name}
+        SELECT {select_fields} FROM {table_name(dataclass)}
         {where}
     """
 
@@ -103,3 +105,8 @@ def convert_to_type(value, target_type):
             )
         assert False
     return target_type(value)
+
+
+def table_name(model):
+    return model.__name__.lower() + "s"
+
