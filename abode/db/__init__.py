@@ -51,6 +51,9 @@ def get_pool():
 def with_cursor(func):
     @functools.wraps(func)
     async def wrapped(*args, **kwargs):
+        if "cursor" in kwargs:
+            return await func(kwargs.pop("cursor"), *args, **kwargs)
+
         async with get_pool().acquire() as conn:
             async with conn.cursor() as cursor:
                 return await func(cursor, *args, **kwargs)

@@ -34,17 +34,22 @@ class Guild(BaseModel):
 
 @with_cursor
 async def upsert_guild(cursor, guild, is_currently_joined=None):
-    guild = Guild.from_attrs(guild, is_currently_joined=is_currently_joined)
+    from .emoji import upsert_emoji
+
+    new_guild = Guild.from_attrs(guild, is_currently_joined=is_currently_joined)
 
     # TODO: calculate diff
-    await cursor.execute(build_select_query(guild, "id = ?"), guild.id)
+    await cursor.execute(build_select_query(new_guild, "id = ?"), new_guild.id)
     existing_guild = await cursor.fetchone()
 
-    query, args = build_insert_query(guild, upsert=True)
+    query, args = build_insert_query(new_guild, upsert=True)
     await cursor.execute(query, *args)
 
     if existing_guild is not None:
         existing_guild = Guild.from_attrs(existing_guild)
-        diff = list(guild.diff(existing_guild))
+        diff = list(new_guild.diff(existing_guild))
         if diff:
             print(f"[guilds] diff is {diff}")
+
+    for emoji in guild.emojis:
+        await upsert_emoji(emoji, cursor=cursor)

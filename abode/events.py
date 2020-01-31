@@ -9,10 +9,6 @@ async def on_ready(client):
         print(f"Updating guild {guild.name}")
         await upsert_guild(guild, is_currently_joined=True)
 
-        print("  --> Emoji")
-        for emoji in guild.emojis:
-            await upsert_emoji(emoji)
-
 
 async def on_guild_join(client, guild):
     await upsert_guild(guild, is_currently_joined=True)
