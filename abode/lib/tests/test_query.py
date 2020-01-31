@@ -84,34 +84,34 @@ def test_parse_complex_queries():
 
 def test_compile_basic_queries():
     assert compile_query("name:blob", Guild) == (
-        "SELECT * FROM guilds WHERE name LIKE ?",
+        "SELECT * FROM guilds WHERE guilds.name LIKE ?",
         ("%blob%",),
     )
 
     assert compile_query('name:"blob"', Guild) == (
-        "SELECT * FROM guilds WHERE name LIKE ?",
+        "SELECT * FROM guilds WHERE guilds.name LIKE ?",
         ("blob",),
     )
 
     assert compile_query("name:(blob emoji)", Guild) == (
-        "SELECT * FROM guilds WHERE name LIKE ? AND name LIKE ?",
+        "SELECT * FROM guilds WHERE guilds.name LIKE ? AND guilds.name LIKE ?",
         ("%blob%", "%emoji%",),
     )
 
     assert compile_query("name:(blob AND emoji)", Guild) == (
-        "SELECT * FROM guilds WHERE name LIKE ? AND name LIKE ?",
+        "SELECT * FROM guilds WHERE guilds.name LIKE ? AND guilds.name LIKE ?",
         ("%blob%", "%emoji%",),
     )
 
     assert compile_query("name:(discord AND NOT api)", Guild) == (
-        "SELECT * FROM guilds WHERE name LIKE ? AND NOT name LIKE ?",
+        "SELECT * FROM guilds WHERE guilds.name LIKE ? AND NOT guilds.name LIKE ?",
         ("%discord%", "%api%",),
     )
 
 
 def test_compile_complex_queries():
     assert compile_query("name:blob OR name:api", Guild) == (
-        "SELECT * FROM guilds WHERE name LIKE ? OR name LIKE ?",
+        "SELECT * FROM guilds WHERE guilds.name LIKE ? OR guilds.name LIKE ?",
         ("%blob%", "%api%"),
     )
 
@@ -121,6 +121,16 @@ def test_compile_complex_queries():
     )
 
     assert compile_query("content:yeet", Message) == (
-        "SELECT * FROM messages JOIN messages_fts ON messages.id = messages_fts.rowid WHERE messages_fts.content LIKE ?",
-        ("%yeet%",),
+        "SELECT * FROM messages JOIN messages_fts ON messages.id = messages_fts.rowid WHERE messages_fts.content MATCH ?",
+        ("yeet",),
+    )
+
+    assert compile_query("", Guild, limit=100, offset=150) == (
+        "SELECT * FROM guilds LIMIT 100 OFFSET 150",
+        (),
+    )
+
+    assert compile_query("", Guild, order_by="id") == (
+        "SELECT * FROM guilds ORDER BY guilds.id ASC",
+        (),
     )

@@ -7,6 +7,8 @@ import typing
 
 pool = None
 
+FTS = typing.NewType("FTS", str)
+
 
 def to_json_str(obj):
     if isinstance(obj, str):

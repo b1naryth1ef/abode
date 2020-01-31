@@ -1,11 +1,6 @@
 from dataclasses import dataclass, fields
 from typing import Optional
-from . import (
-    with_cursor,
-    build_insert_query,
-    to_json_str,
-    convert_to_type,
-)
+from . import with_cursor, build_insert_query, to_json_str, convert_to_type, FTS
 from .guilds import Guild
 
 
@@ -31,7 +26,7 @@ class Message:
     # TODO: eventually these could be types, but I am far too baked for that
     #   refactor at the moment.
     _refs = {"guild": (Guild, ("guild_id", "id"))}
-    _external_indexes = {"content": ("messages_fts", ("id", "rowid"))}
+    _external_indexes = {"content": ("messages_fts", ("id", "rowid"), FTS)}
 
     @classmethod
     def from_discord(cls, message, deleted=False):

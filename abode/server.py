@@ -29,18 +29,25 @@ async def route_search(request, model):
     if not model:
         return json({"error": "unsupported model"}, status=404)
 
-    limit = request.args.get("limit", 100)
-    page = request.args.get("page", 1)
+    limit = request.json.get("limit", 100)
+    page = request.json.get("page", 1)
+    order_by = request.json.get("order_by")
+    order_dir = request.json.get("order_dir", "ASC")
 
     query = request.json.get("query", "")
     try:
         sql, args = compile_query(
-            query, model, limit=int(limit), offset=(int(limit) * (int(page) - 1))
+            query,
+            model,
+            limit=limit,
+            offset=(limit * (page - 1)),
+            order_by=order_by,
+            order_dir=order_dir,
         )
     except Exception as e:
         return json({"error": e})
 
-    _debug = {"args": args, "sql": sql, "limit": int(limit), "page": int(page)}
+    _debug = {"args": args, "sql": sql, "limit": limit, "page": page}
 
     results = []
     try:
