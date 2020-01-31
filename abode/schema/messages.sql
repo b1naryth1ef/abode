@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS messages (
     deleted integer
 );
 
+CREATE INDEX IF NOT EXISTS messages_guild_id_idx ON messages (guild_id);
+CREATE INDEX IF NOT EXISTS messages_channel_id_idx ON messages (channel_id);
+CREATE INDEX IF NOT EXISTS messages_author_id_idx ON messages (author_id);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content=messages, content_rowid=id);
 CREATE TRIGGER IF NOT EXISTS messages_after_insert AFTER INSERT ON messages BEGIN
   INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);

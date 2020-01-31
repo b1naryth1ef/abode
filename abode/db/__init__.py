@@ -61,7 +61,7 @@ def with_cursor(func):
     return wrapped
 
 
-def build_insert_query(instance, upsert=False):
+def build_insert_query(instance, upsert=False, ignore_existing=False):
     dataclass = instance.__class__
 
     column_names = []
@@ -81,6 +81,12 @@ def build_insert_query(instance, upsert=False):
         upsert_contents = f"""
             ON CONFLICT (id) DO UPDATE SET
                 {updates}
+        """
+
+    if ignore_existing:
+        assert not upsert
+        upsert_contents = """
+            ON CONFLICT (id) DO NOTHING
         """
 
     return (

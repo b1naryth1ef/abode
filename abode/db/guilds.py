@@ -18,6 +18,7 @@ class Guild(BaseModel):
     icon: Optional[str]
     is_currently_joined: bool
 
+    _pk = "id"
     _refs = {}
     _external_indexes = {}
 

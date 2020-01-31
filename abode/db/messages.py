@@ -33,7 +33,8 @@ class Message(BaseModel):
 
     # TODO: eventually these could be types, but I am far too baked for that
     #   refactor at the moment.
-    _refs = {"guild": (Guild, ("guild_id", "id"))}
+    _pk = "id"
+    _refs = {"guild": (Guild, ("guild_id", "id"), True)}
     _external_indexes = {"content": ("messages_fts", ("id", "rowid"), FTS)}
 
     @classmethod
@@ -73,7 +74,7 @@ class Message(BaseModel):
 async def insert_message(cursor, message):
     message = Message.from_discord(message)
 
-    query, args = build_insert_query(message)
+    query, args = build_insert_query(message, ignore_existing=True)
     try:
         await cursor.execute(query, *args)
     except Exception:

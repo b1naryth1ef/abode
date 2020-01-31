@@ -138,7 +138,14 @@ class QueryParser:
         return result
 
 
-def resolve_model_field(field_name, model):
+class SubqueryOptimized(object):
+    def __init__(self, inner, ref_model, join):
+        self.inner = inner
+        self.ref_model = ref_model
+        self.join = join
+
+
+def resolve_model_field(field_name, model, use_subquery_optimize=False):
     """
     Resolves a field name within a given model. This function will generate joins
     for cases where the target field is on a relation or is stored within an
@@ -155,25 +162,32 @@ def resolve_model_field(field_name, model):
     """
     # TODO: we need to seperate out this logic into another function so we can
     #  properly recurse and handle x.y.z cases.
+
     if "." in field_name:
         assert field_name.count(".") == 1
         left, right = field_name.split(".", 1)
 
-        ref_model, on = model._refs[left]
+        ref_model, on, can_subquery_optimize = model._refs[left]
         for ref_field in dataclasses.fields(ref_model):
             if ref_field.name == right:
                 break
         else:
             raise Exception(f"no field `{right}` on model `{ref_model}`")
-        return (
-            f"{table_name(ref_model)}.{right}",
-            ref_field.type,
-            {
-                table_name(
-                    ref_model
-                ): f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
-            },
-        )
+
+        if use_subquery_optimize and can_subquery_optimize:
+            # Emit no join
+            # Somehow op results in message.guild_id in (SELECT id FROM guilds WHERE name LIKE xxx)
+            return (right, SubqueryOptimized(ref_field.type, ref_model, on), {})
+        else:
+            return (
+                f"{table_name(ref_model)}.{right}",
+                ref_field.type,
+                {
+                    table_name(
+                        ref_model
+                    ): f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
+                },
+            )
 
     if field_name in model._external_indexes:
         ref_table, on, field_type = model._external_indexes[field_name]
@@ -221,17 +235,23 @@ def _compile_field_query_op(field_type, token):
             # Like just gives us case insensitivity here
             return ("LIKE", token["value"])
     else:
+        print(token)
         raise Exception(f"cannot query against field of type {field_type}")
 
 
-def _compile_token_for_query(token, model, field=None, field_type=None):
+def _compile_token_for_query(
+    token, model, field=None, field_type=None, use_subquery_optimize=False
+):
     """
     Compile a single token into a single filter against the model.
 
     Returns a tuple of the where clause, variables, and joins.
     """
+
     if token["type"] == "label":
-        field, field_type, field_joins = resolve_model_field(token["name"], model)
+        field, field_type, field_joins = resolve_model_field(
+            token["name"], model, use_subquery_optimize=use_subquery_optimize
+        )
         token["value"]["exact"] = token["exact"]
         where, variables, joins = _compile_token_for_query(
             token["value"], model, field=field, field_type=field_type
@@ -241,13 +261,28 @@ def _compile_token_for_query(token, model, field=None, field_type=None):
     elif token["type"] == "symbol":
         if token["value"] in ("AND", "OR", "NOT"):
             return (token["value"], [], {})
+        elif isinstance(field_type, SubqueryOptimized):
+            op, arg = _compile_field_query_op(field_type.inner, token)
+            return (
+                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM {table_name(field_type.ref_model)} WHERE {field} {op} ?)",
+                [arg],
+                {},
+            )
         elif field:
+            # messages.guild_id IN (SELECT id FROM guilds WHERE x LIKE y)
             op, arg = _compile_field_query_op(field_type, token)
             return (f"{field} {op} ?", [arg], {})
         else:
             value = token["value"]
             raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
     elif token["type"] == "string" and field:
+        if isinstance(field_type, SubqueryOptimized):
+            op, arg = _compile_field_query_op(field_type.inner, token)
+            return (
+                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM {table_name(field_type.ref_model)} WHERE {field} {op} ?)",
+                [arg],
+                {},
+            )
         op, arg = _compile_field_query_op(field_type, token)
         return (f"{field} {op} ?", [arg], {})
     elif token["type"] == "group":
@@ -268,11 +303,21 @@ def _compile_token_for_query(token, model, field=None, field_type=None):
 
 
 def _compile_query_for_model(
-    tokens, model, limit=None, offset=None, order_by=None, order_dir="ASC"
+    tokens,
+    model,
+    limit=None,
+    offset=None,
+    order_by=None,
+    order_dir="ASC",
+    use_subquery_optimize=False,
 ):
     parts = []
     for token in tokens:
-        parts.append(_compile_token_for_query(token, model))
+        parts.append(
+            _compile_token_for_query(
+                token, model, use_subquery_optimize=use_subquery_optimize
+            )
+        )
 
     where = []
     variables = []
@@ -283,13 +328,15 @@ def _compile_query_for_model(
         variables.extend(variables_part)
         joins.update(joins_part)
 
-    if order_by:
-        field, field_type, order_joins = resolve_model_field(order_by, model)
-        joins.update(order_joins)
-        assert order_dir in ("ASC", "DESC")
-        order_by = f" ORDER BY {field} {order_dir}"
-    else:
-        order_by = ""
+    if not order_by:
+        order_by = model._pk
+
+    field, field_type, order_joins = resolve_model_field(order_by, model)
+    joins.update(order_joins)
+    assert order_dir in ("ASC", "DESC")
+    order_by = f" ORDER BY {field} {order_dir}"
+
+    print(joins)
 
     if joins:
         joins = "".join(f" JOIN {table} ON {cond}" for table, cond in joins.items())
@@ -302,11 +349,11 @@ def _compile_query_for_model(
         where = ""
 
     suffix = []
-    if limit is not None:
+    if limit is not None and limit > 0:
         suffix.append(f" LIMIT {limit}")
 
-    if offset is not None:
-        suffix.append(f" OFFSET {offset}")
+        if offset is not None:
+            suffix.append(f" OFFSET {offset}")
 
     suffix = "".join(suffix)
 

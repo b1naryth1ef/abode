@@ -26,6 +26,7 @@ class Emoji(BaseModel):
     created_at: int
     deleted: bool
 
+    _pk = "id"
     _table_name = "emoji"
     _refs = {"guild": (Guild, ("guild_id", "id"))}
     _external_indexes = {}

@@ -160,6 +160,19 @@ def test_compile_complex_queries():
     )
 
     assert compile_query("content:yeet", Message) == (
-        "SELECT messages.* FROM messages JOIN messages_fts ON messages.id = messages_fts.rowid WHERE messages_fts.content MATCH ?",
+        "SELECT messages.* FROM messages JOIN messages_fts ON messages.id = messages_fts.rowid WHERE "
+        "messages_fts.content MATCH ?",
         ("yeet",),
     )
+
+    assert compile_query("guild.name:blob", Message, use_subquery_optimize=True) == (
+        "SELECT messages.* FROM messages WHERE messages.guild_id IN (SELECT id FROM guilds WHERE name LIKE ?)",
+        ("%blob%",),
+    )
+
+    assert compile_query('guild.name:(a "b")', Message, use_subquery_optimize=True) == (
+        "SELECT messages.* FROM messages WHERE messages.guild_id IN (SELECT id FROM guilds WHERE name LIKE ?) AND "
+        "messages.guild_id IN (SELECT id FROM guilds WHERE name LIKE ?)",
+        ("%a%", "b"),
+    )
+

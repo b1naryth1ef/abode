@@ -49,11 +49,18 @@ async def route_search(request, model):
             offset=(limit * (page - 1)),
             order_by=order_by,
             order_dir=order_dir,
+            use_subquery_optimize=True,
         )
     except Exception as e:
         return json({"error": e})
 
-    _debug = {"args": args, "sql": sql, "limit": limit, "page": page}
+    _debug = {
+        "args": args,
+        "sql": sql,
+        "limit": limit,
+        "page": page,
+        "order": [order_by, order_dir],
+    }
 
     results = []
     try:
