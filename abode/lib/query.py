@@ -1,3 +1,13 @@
+"""
+This module implements everything required for processing and executing user-written
+queries in our custom search DSL. As the language is small and simple enough there
+is no real concept of a lexer, and instead we directly parse search queries into
+an extremely simple AST.
+
+From an AST we can then generate a query based on a given model and query options.
+This query is returned in a form that can be easily passed to SQL interfaces
+(query, (args...)).
+"""
 import dataclasses
 import typing
 from abode.db import table_name, FTS, Snowflake
@@ -129,9 +139,24 @@ class QueryParser:
 
 
 def resolve_model_field(field_name, model):
-    # guild.name -> "guilds.name", {"guilds": "message.guild_id = guild.id"}
+    """
+    Resolves a field name within a given model. This function will generate joins
+    for cases where the target field is on a relation or is stored within an
+    external index.
+
+    The result of this function is a tuple of the target field name, the field
+    result type, and a dictionary of joins.
+
+    >>> resolve_model_field("guilds.name", Message)
+    ("guilds.name", str, {"guilds": "messages.guild_id = guilds.id"})
+
+    >>> resolve_model_field("content", Message)
+    ("messages_fts.content", FTS(str), {"messages_fts": "messages.id = messages_fts.rowid"})
+    """
+    # TODO: we need to seperate out this logic into another function so we can
+    #  properly recurse and handle x.y.z cases.
     if "." in field_name:
-        assert field_name.count(".") == 1  # TODO: recursive lol
+        assert field_name.count(".") == 1
         left, right = field_name.split(".", 1)
 
         ref_model, on = model._refs[left]
@@ -150,7 +175,6 @@ def resolve_model_field(field_name, model):
             },
         )
 
-    # content -> "messages_fts.content", {"messages_fts": "message.id = messages_fts.rowid"}
     if field_name in model._external_indexes:
         ref_table, on, field_type = model._external_indexes[field_name]
         return (
@@ -166,13 +190,19 @@ def resolve_model_field(field_name, model):
 
 
 def _compile_field_query_op(field_type, token):
+    """
+    Compiles a single token against a given field type into a single query filter.
+    Sadly this function also encodes some more complex logic about querying, such
+    as wildcard processing and exact matching.
+
+    Returns a tuple of the filter operator and the processed token value as an
+    argument to the operator.
+    """
     assert token["type"] in ("symbol", "string")
 
-    # nullable = False
     if typing.get_origin(field_type) is typing.Union:
         args = typing.get_args(field_type)
         field_type = next(i for i in args if i != type(None))
-        # nullable = True
 
     if field_type == FTS:
         # Probably need to do something smarter for strings? maybe...
@@ -195,6 +225,11 @@ def _compile_field_query_op(field_type, token):
 
 
 def _compile_token_for_query(token, model, field=None, field_type=None):
+    """
+    Compile a single token into a single filter against the model.
+
+    Returns a tuple of the where clause, variables, and joins.
+    """
     if token["type"] == "label":
         field, field_type, field_joins = resolve_model_field(token["name"], model)
         token["value"]["exact"] = token["exact"]
