@@ -1,5 +1,6 @@
 from abode.lib.query import QueryParser, compile_query
 from abode.db.guilds import Guild
+from abode.db.messages import Message
 
 
 def test_parse_basic_queries():
@@ -47,11 +48,6 @@ def test_parse_basic_queries():
 
 
 def test_parse_complex_queries():
-    print(
-        QueryParser.parsed(
-            'type:attachment guild:"discord api" (from:Jake#0001 OR from:danny#0007)'
-        )
-    )
     assert QueryParser.parsed(
         'type:attachment guild:"discord api" (from:Jake#0001 OR from:danny#0007)'
     ) == [
@@ -93,11 +89,10 @@ def test_compile_basic_queries():
     )
 
     assert compile_query('name:"blob"', Guild) == (
-        "SELECT * FROM guilds WHERE name = ?",
+        "SELECT * FROM guilds WHERE name LIKE ?",
         ("blob",),
     )
 
-    print(compile_query("name:(blob emoji)", Guild))
     assert compile_query("name:(blob emoji)", Guild) == (
         "SELECT * FROM guilds WHERE name LIKE ? AND name LIKE ?",
         ("%blob%", "%emoji%",),
@@ -118,4 +113,14 @@ def test_compile_complex_queries():
     assert compile_query("name:blob OR name:api", Guild) == (
         "SELECT * FROM guilds WHERE name LIKE ? OR name LIKE ?",
         ("%blob%", "%api%"),
+    )
+
+    assert compile_query("guild.name:blob", Message) == (
+        "SELECT * FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.name LIKE ?",
+        ("%blob%",),
+    )
+
+    assert compile_query("content:yeet", Message) == (
+        "SELECT * FROM messages JOIN messages_fts ON messages.id = messages_fts.rowid WHERE messages_fts.content LIKE ?",
+        ("%yeet%",),
     )

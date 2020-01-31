@@ -123,63 +123,109 @@ class QueryParser:
 
 
 def _match_model_field(field_name, model):
-    assert "." not in field_name  # todo
+    # guild.name -> "guilds.name", {"guilds": "message.guild_id = guild.id"}
+    if "." in field_name:
+        assert field_name.count(".") == 1  # TODO: recursive lol
+        left, right = field_name.split(".", 1)
+
+        ref_model, on = model._refs[left]
+        return (
+            f"{table_name(ref_model)}.{right}",
+            {
+                table_name(
+                    ref_model
+                ): f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
+            },
+        )
+
+    # content -> "messages_fts.content", {"messages_fts": "message.id = messages_fts.rowid"}
+    if field_name in model._external_indexes:
+        ref_table, on = model._external_indexes[field_name]
+        return (
+            f"{ref_table}.{field_name}",
+            {ref_table: f"{table_name(model)}.{on[0]} = {ref_table}.{on[1]}"},
+        )
 
     for field in dataclasses.fields(model):
         if field.name == field_name:
-            return field
+            return field.name, {}
     raise Exception(f"no such field on {model}: `{field_name}``")
 
 
 def _compile_token_for_query(token, model, field=None):
     if token["type"] == "label":
-        field = _match_model_field(token["name"], model)
-        return _compile_token_for_query(token["value"], model, field=field)
+        field, field_joins = _match_model_field(token["name"], model)
+        where, variables, joins = _compile_token_for_query(
+            token["value"], model, field=field
+        )
+        joins.update(field_joins)
+        return where, variables, joins
     elif token["type"] == "symbol":
         if token["value"] in ("AND", "OR", "NOT"):
-            return (token["value"], [])
+            return (token["value"], [], {})
         elif field:
-            return (f"{field.name} LIKE ?", ["%" + token["value"] + "%"])
+            return (f"{field} LIKE ?", ["%" + token["value"] + "%"], {})
         else:
             value = token["value"]
             raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
     elif token["type"] == "string" and field:
         # Like just gives us case insensitivity here
-        return (f"{field.name} LIKE ?", [token["value"]])
+        return (f"{field} LIKE ?", [token["value"]], {})
     elif token["type"] == "group":
         where = []
         variables = []
+        joins = {}
         for child_token in token["value"]:
-            where_part, variables_part = _compile_token_for_query(
+            where_part, variables_part, joins_part = _compile_token_for_query(
                 child_token, model, field
             )
+            joins.update(joins_part)
             where.append(where_part)
             variables.extend(variables_part)
-        return " ".join(where), variables
+        return " ".join(where), variables, joins
     else:
         assert False
 
 
-def _compile_query_for_model(tokens, model):
+def _compile_query_for_model(tokens, model, limit=None, offset=None):
     parts = []
     for token in tokens:
         parts.append(_compile_token_for_query(token, model))
 
     where = []
     variables = []
+    joins = {}
 
-    for where_part, variables_part in parts:
+    for where_part, variables_part, joins_part in parts:
         where.append(where_part)
         variables.extend(variables_part)
+        joins.update(joins_part)
+
+    if joins:
+        joins = "".join(f" JOIN {table} ON {cond}" for table, cond in joins.items())
+    else:
+        joins = ""
 
     if where:
         where = " WHERE " + " ".join(where)
     else:
         where = ""
 
-    return (f"SELECT * FROM {table_name(model)}{where}", tuple(variables))
+    suffix = []
+    if limit is not None:
+        suffix.append(f" LIMIT {limit}")
+
+    if offset is not None:
+        suffix.append(f" OFFSET {offset}")
+
+    suffix = "".join(suffix)
+
+    return (
+        f"SELECT * FROM {table_name(model)}{joins}{where}{suffix}",
+        tuple(variables),
+    )
 
 
-def compile_query(query, model):
+def compile_query(query, model, **kwargs):
     tokens = QueryParser.parsed(query)
-    return _compile_query_for_model(tokens, model)
+    return _compile_query_for_model(tokens, model, **kwargs)

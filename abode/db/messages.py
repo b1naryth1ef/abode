@@ -6,11 +6,13 @@ from . import (
     to_json_str,
     convert_to_type,
 )
+from .guilds import Guild
 
 
 @dataclass
 class Message:
     id: str
+    guild_id: str
     channel_id: str
     author_id: Optional[str]
     webhook_id: Optional[str]
@@ -26,10 +28,16 @@ class Message:
     edited_at: Optional[int]
     deleted: bool
 
+    # TODO: eventually these could be types, but I am far too baked for that
+    #   refactor at the moment.
+    _refs = {"guild": (Guild, ("guild_id", "id"))}
+    _external_indexes = {"content": ("messages_fts", ("id", "rowid"))}
+
     @classmethod
     def from_discord(cls, message, deleted=False):
         return cls(
             id=str(message.id),
+            guild_id=str(message.guild.id if message.guild else None),
             channel_id=str(message.channel.id),
             author_id=str(message.author.id),
             webhook_id=str(message.webhook_id) if message.webhook_id else None,

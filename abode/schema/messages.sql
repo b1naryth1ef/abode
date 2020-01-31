@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS messages (
     id text PRIMARY KEY,
+    guild_id text,
     channel_id text,
     author_id text,
     webhook_id text,

@@ -11,6 +11,9 @@ class Guild:
     icon: Optional[str]
     is_currently_joined: bool
 
+    _refs = {}
+    _external_indexes = {}
+
     @classmethod
     def from_attrs(cls, guild, is_currently_joined=None):
         kwargs = {"is_currently_joined": is_currently_joined}
