@@ -308,7 +308,7 @@ def _compile_token_for_query(
             joins.update(joins_part)
             where.append(where_part)
             variables.extend(variables_part)
-        return " ".join(where), variables, joins, varidx
+        return "(" + " ".join(where) + ")", variables, joins, varidx
     else:
         assert False
 
@@ -361,7 +361,7 @@ def _compile_query_for_model(
     if limit is not None and limit > 0:
         suffix.append(f" LIMIT {limit}")
 
-        if offset is not None:
+        if offset is not None and offset > 0:
             suffix.append(f" OFFSET {offset}")
 
     suffix = "".join(suffix)

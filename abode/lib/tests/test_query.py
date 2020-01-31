@@ -103,76 +103,79 @@ def test_parse_complex_queries():
 
 def test_compile_basic_queries():
     assert compile_query("name:blob", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name LIKE ?",
+        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 ORDER BY guilds.id ASC",
         ("%blob%",),
     )
 
     assert compile_query('name:"blob"', Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name LIKE ?",
+        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 ORDER BY guilds.id ASC",
         ("blob",),
     )
 
     assert compile_query("name:(blob emoji)", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name LIKE ? AND guilds.name LIKE ?",
+        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2) ORDER BY guilds.id ASC",
         ("%blob%", "%emoji%",),
     )
 
     assert compile_query("name:(blob AND emoji)", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name LIKE ? AND guilds.name LIKE ?",
+        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2) ORDER BY guilds.id ASC",
         ("%blob%", "%emoji%",),
     )
 
     assert compile_query("name:(discord AND NOT api)", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name LIKE ? AND NOT guilds.name LIKE ?",
+        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND NOT guilds.name ILIKE $2) ORDER BY guilds.id ASC",
         ("%discord%", "%api%",),
     )
 
     assert compile_query("id:1", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.id = ?",
-        ("1",),
+        "SELECT guilds.* FROM guilds WHERE guilds.id = $1 ORDER BY guilds.id ASC",
+        (1,),
     )
 
     assert compile_query("", Guild, limit=100, offset=150) == (
-        "SELECT guilds.* FROM guilds LIMIT 100 OFFSET 150",
+        "SELECT guilds.* FROM guilds ORDER BY guilds.id ASC LIMIT 100 OFFSET 150",
         (),
     )
 
-    assert compile_query("", Guild, order_by="id") == (
-        "SELECT guilds.* FROM guilds ORDER BY guilds.id ASC",
+    assert compile_query("", Guild, order_by="id", order_dir="DESC") == (
+        "SELECT guilds.* FROM guilds ORDER BY guilds.id DESC",
         (),
     )
 
     assert compile_query("id=1", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.id = ?",
-        ("1",),
+        "SELECT guilds.* FROM guilds WHERE guilds.id = $1 ORDER BY guilds.id ASC",
+        (1,),
     )
 
 
 def test_compile_complex_queries():
     assert compile_query("name:blob OR name:api", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name LIKE ? OR guilds.name LIKE ?",
+        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 OR guilds.name ILIKE $2"
+        " ORDER BY guilds.id ASC",
         ("%blob%", "%api%"),
     )
 
     assert compile_query("guild.name:blob", Message) == (
-        "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.name LIKE ?",
+        "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.name ILIKE $1"
+        " ORDER BY messages.id ASC",
         ("%blob%",),
     )
 
     assert compile_query("content:yeet", Message) == (
-        "SELECT messages.* FROM messages JOIN messages_fts ON messages.id = messages_fts.rowid WHERE "
-        "messages_fts.content MATCH ?",
-        ("yeet",),
+        "SELECT messages.* FROM messages WHERE "
+        "messages.content ILIKE $1 ORDER BY messages.id ASC",
+        ("%yeet%",),
     )
 
     assert compile_query("guild.name:blob", Message, use_subquery_optimize=True) == (
-        "SELECT messages.* FROM messages WHERE messages.guild_id IN (SELECT id FROM guilds WHERE name LIKE ?)",
+        "SELECT messages.* FROM messages WHERE messages.guild_id IN (SELECT id FROM guilds WHERE name ILIKE $1)"
+        " ORDER BY messages.id ASC",
         ("%blob%",),
     )
 
-    assert compile_query('guild.name:(a "b")', Message, use_subquery_optimize=True) == (
-        "SELECT messages.* FROM messages WHERE messages.guild_id IN (SELECT id FROM guilds WHERE name LIKE ?) AND "
-        "messages.guild_id IN (SELECT id FROM guilds WHERE name LIKE ?)",
+    assert compile_query('guild.name:(a "b")', Message) == (
+        "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE (guilds.name ILIKE $1 AND "
+        "guilds.name ILIKE $2) ORDER BY messages.id ASC",
         ("%a%", "b"),
     )
 
