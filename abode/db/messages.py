@@ -1,16 +1,23 @@
 from dataclasses import dataclass, fields
 from typing import Optional
-from . import with_cursor, build_insert_query, to_json_str, convert_to_type, FTS
+from . import (
+    with_cursor,
+    build_insert_query,
+    to_json_str,
+    convert_to_type,
+    FTS,
+    Snowflake,
+)
 from .guilds import Guild
 
 
 @dataclass
 class Message:
-    id: str
-    guild_id: str
-    channel_id: str
-    author_id: Optional[str]
-    webhook_id: Optional[str]
+    id: Snowflake
+    guild_id: Snowflake
+    channel_id: Snowflake
+    author_id: Optional[Snowflake]
+    webhook_id: Optional[Snowflake]
     tts: bool
     type: int
     content: str

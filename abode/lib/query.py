@@ -1,6 +1,6 @@
 import dataclasses
-from typing import Optional
-from abode.db import table_name, FTS
+import typing
+from abode.db import table_name, FTS, Snowflake
 
 JOINERS = ("AND", "OR")
 
@@ -163,10 +163,18 @@ def resolve_model_field(field_name, model):
 def _compile_field_query_op(field_type, token):
     assert token["type"] in ("symbol", "string")
 
+    # nullable = False
+    if typing.get_origin(field_type) is typing.Union:
+        args = typing.get_args(field_type)
+        field_type = next(i for i in args if i != type(None))
+        # nullable = True
+
     if field_type == FTS:
         # Probably need to do something smarter for strings? maybe...
         return ("MATCH", token["value"])
-    elif field_type == str or field_type == Optional[str]:
+    elif field_type == Snowflake:
+        return ("=", token["value"])
+    elif field_type == str or field_type == typing.Optional[str]:
         if token["type"] == "symbol":
             return ("LIKE", "%" + token["value"] + "%")
         else:

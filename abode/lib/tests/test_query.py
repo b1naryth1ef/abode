@@ -108,6 +108,11 @@ def test_compile_basic_queries():
         ("%discord%", "%api%",),
     )
 
+    assert compile_query("id:1", Guild) == (
+        "SELECT * FROM guilds WHERE guilds.id = ?",
+        ("1",),
+    )
+
 
 def test_compile_complex_queries():
     assert compile_query("name:blob OR name:api", Guild) == (

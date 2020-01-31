@@ -1,12 +1,18 @@
 from dataclasses import dataclass, fields
 from typing import Optional
-from . import with_cursor, build_insert_query, build_select_query, convert_to_type
+from . import (
+    with_cursor,
+    build_insert_query,
+    build_select_query,
+    convert_to_type,
+    Snowflake,
+)
 
 
 @dataclass
 class Guild:
-    id: str
-    owner_id: str
+    id: Snowflake
+    owner_id: Snowflake
     name: str
     icon: Optional[str]
     is_currently_joined: bool

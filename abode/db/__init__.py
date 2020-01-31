@@ -8,6 +8,7 @@ import typing
 pool = None
 
 FTS = typing.NewType("FTS", str)
+Snowflake = typing.NewType("Snowflake", str)
 
 
 def to_json_str(obj):
