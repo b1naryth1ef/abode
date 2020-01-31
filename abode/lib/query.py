@@ -47,7 +47,7 @@ class QueryParser:
         parts = ""
         while True:
             char = self._peek_char()
-            if char in (" ", ":", '"', "(", ")", None):
+            if char in (" ", ":", "=", '"', "(", ")", None):
                 return parts
             parts += self._next_char()
 
@@ -69,9 +69,14 @@ class QueryParser:
                 if not symbol:
                     return None
 
-                if self._peek_char() == ":":
-                    self._next_char()
-                    return {"type": "label", "name": symbol, "value": self._parse_one()}
+                if self._peek_char() in (":", "="):
+                    exact = self._next_char() == "="
+                    return {
+                        "type": "label",
+                        "name": symbol,
+                        "value": self._parse_one(),
+                        "exact": exact,
+                    }
 
                 return {"type": "symbol", "value": symbol}
 
@@ -175,7 +180,12 @@ def _compile_field_query_op(field_type, token):
     elif field_type == Snowflake:
         return ("=", token["value"])
     elif field_type == str or field_type == typing.Optional[str]:
-        if token["type"] == "symbol":
+        if token.get("exact"):
+            return ("=", token["value"])
+        elif token["type"] == "symbol":
+            # TODO: regex this so we can handle escapes?
+            if "*" in token["value"]:
+                return ("LIKE", token["value"].replace("*", "%"))
             return ("LIKE", "%" + token["value"] + "%")
         else:
             # Like just gives us case insensitivity here
@@ -187,6 +197,7 @@ def _compile_field_query_op(field_type, token):
 def _compile_token_for_query(token, model, field=None, field_type=None):
     if token["type"] == "label":
         field, field_type, field_joins = resolve_model_field(token["name"], model)
+        token["value"]["exact"] = token["exact"]
         where, variables, joins = _compile_token_for_query(
             token["value"], model, field=field, field_type=field_type
         )
@@ -209,6 +220,7 @@ def _compile_token_for_query(token, model, field=None, field_type=None):
         variables = []
         joins = {}
         for child_token in token["value"]:
+            child_token["exact"] = token.get("exact", False)
             where_part, variables_part, joins_part = _compile_token_for_query(
                 child_token, model, field=field, field_type=field_type
             )
@@ -264,7 +276,7 @@ def _compile_query_for_model(
     suffix = "".join(suffix)
 
     return (
-        f"SELECT * FROM {table_name(model)}{joins}{where}{order_by}{suffix}",
+        f"SELECT {table_name(model)}.* FROM {table_name(model)}{joins}{where}{order_by}{suffix}",
         tuple(variables),
     )
 

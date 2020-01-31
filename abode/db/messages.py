@@ -7,12 +7,13 @@ from . import (
     convert_to_type,
     FTS,
     Snowflake,
+    BaseModel,
 )
 from .guilds import Guild
 
 
 @dataclass
-class Message:
+class Message(BaseModel):
     id: Snowflake
     guild_id: Snowflake
     channel_id: Snowflake
@@ -66,11 +67,6 @@ class Message:
         if deleted:
             kwargs["deleted"] = deleted
         return cls(**kwargs)
-
-    def diff(self, other):
-        for field in fields(self):
-            if getattr(other, field.name) != getattr(self, field.name):
-                yield {"field": field.name, "value": getattr(other, field.name)}
 
 
 @with_cursor

@@ -4,6 +4,7 @@ from sanic.response import json
 from abode.lib.query import compile_query
 from abode.db.guilds import Guild
 from abode.db.messages import Message
+from abode.db.emoji import Emoji
 from abode.db import get_pool
 
 app = Sanic()
@@ -12,6 +13,7 @@ app = Sanic()
 SUPPORTED_MODELS = {
     "guild": Guild,
     "message": Message,
+    "emoji": Emoji,
 }
 
 

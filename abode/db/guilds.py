@@ -6,11 +6,12 @@ from . import (
     build_select_query,
     convert_to_type,
     Snowflake,
+    BaseModel,
 )
 
 
 @dataclass
-class Guild:
+class Guild(BaseModel):
     id: Snowflake
     owner_id: Snowflake
     name: str
@@ -30,11 +31,6 @@ class Guild:
             kwargs[field.name] = convert_to_type(getattr(guild, field.name), field.type)
         return cls(**kwargs)
 
-    def diff(self, other):
-        for field in fields(self):
-            if getattr(other, field.name) != getattr(self, field.name):
-                yield {"field": field.name, "value": getattr(other, field.name)}
-
 
 @with_cursor
 async def upsert_guild(cursor, guild, is_currently_joined=None):
@@ -51,4 +47,4 @@ async def upsert_guild(cursor, guild, is_currently_joined=None):
         existing_guild = Guild.from_attrs(existing_guild)
         diff = list(guild.diff(existing_guild))
         if diff:
-            print(f"Diff is {diff}")
+            print(f"[guilds] diff is {diff}")

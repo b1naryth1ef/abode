@@ -1,10 +1,17 @@
 from abode.db.guilds import upsert_guild
 from abode.db.messages import insert_message
+from abode.db.emoji import upsert_emoji
 
 
 async def on_ready(client):
+    print("Connected!")
     for guild in client.guilds:
+        print(f"Updating guild {guild.name}")
         await upsert_guild(guild, is_currently_joined=True)
+
+        print("  --> Emoji")
+        for emoji in guild.emojis:
+            await upsert_emoji(emoji)
 
 
 async def on_guild_join(client, guild):

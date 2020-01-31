@@ -8,7 +8,10 @@ import typing
 pool = None
 
 FTS = typing.NewType("FTS", str)
-Snowflake = typing.NewType("Snowflake", str)
+
+
+def Snowflake(i):
+    return str(i)
 
 
 def to_json_str(obj):
@@ -21,7 +24,7 @@ async def init_db(config, loop):
     global pool
     database = config.get("dbpath", "test.db")
     pool = await aioodbc.create_pool(
-        dsn=f"Driver=SQLite3;Database={database}", loop=loop
+        dsn=f"Driver=SQLite3;Database={database}", loop=loop, minsize=2, maxsize=2
     )
 
     conn = await pool.acquire()
@@ -111,5 +114,15 @@ def convert_to_type(value, target_type):
 
 
 def table_name(model):
-    return model.__name__.lower() + "s"
+    return getattr(model, "_table_name", model.__name__.lower() + "s")
 
+
+class BaseModel:
+    def diff(self, other):
+        for field in dataclasses.fields(self):
+            if getattr(other, field.name) != getattr(self, field.name):
+                yield {
+                    "field": field.name,
+                    "old": getattr(other, field.name),
+                    "new": getattr(self, field.name),
+                }
