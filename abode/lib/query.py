@@ -224,11 +224,8 @@ def _compile_field_query_op(field_type, token, varidx):
 
     if field_type == FTS:
         return ("@@", token["value"], f"to_tsquery({var})")
-        # return ("@@", to_tsquery('create & table')
-        # Probably need to do something smarter for strings? maybe...
-        # return ("MATCH", token["value"], var)
     elif field_type == Snowflake:
-        return ("=", token["value"], var)
+        return ("=", Snowflake(token["value"]), var)
     elif field_type == str or field_type == typing.Optional[str]:
         if token.get("exact"):
             return ("=", token["value"], var)

@@ -48,7 +48,7 @@ class Message(BaseModel):
             webhook_id=message.webhook_id if message.webhook_id else None,
             tts=bool(message.tts),
             type=message.type.value,
-            content=message.content.encode("utf-8"),
+            content=message.content,
             embeds=[i.to_dict() for i in message.embeds],
             mention_everyone=bool(message.mention_everyone),
             flags=message.flags.value,
