@@ -1,4 +1,4 @@
-import aioodbc
+import asyncpg
 import functools
 import os
 import dataclasses
@@ -7,11 +7,12 @@ import typing
 
 pool = None
 
+JSONB = typing.NewType("JSONB", str)
 FTS = typing.NewType("FTS", str)
 
 
 def Snowflake(i):
-    return str(i)
+    return int(i)
 
 
 def to_json_str(obj):
@@ -22,41 +23,34 @@ def to_json_str(obj):
 
 async def init_db(config, loop):
     global pool
-    database = config.get("dbpath", "test.db")
-    pool = await aioodbc.create_pool(
-        dsn=f"Driver=SQLite3;Database={database}", loop=loop, minsize=2, maxsize=2
-    )
 
-    conn = await pool.acquire()
-    cursor = await conn.cursor()
+    pool = await asyncpg.create_pool(dsn=config.get("postgres_dsn"))
 
-    sql_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "schema"))
-    for sql_file in os.listdir(sql_dir):
-        with open(os.path.join(sql_dir, sql_file), "r") as f:
-            await cursor.execute(f.read())
-            await cursor.commit()
-
-    await cursor.close()
-    await conn.close()
+    async with pool.acquire() as connection:
+        sql_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "schema")
+        )
+        for sql_file in os.listdir(sql_dir):
+            with open(os.path.join(sql_dir, sql_file), "r") as f:
+                await connection.execute(f.read())
 
 
 async def close_db():
-    get_pool().close()
+    await get_pool().close()
 
 
 def get_pool():
     return pool
 
 
-def with_cursor(func):
+def with_conn(func):
     @functools.wraps(func)
     async def wrapped(*args, **kwargs):
-        if "cursor" in kwargs:
-            return await func(kwargs.pop("cursor"), *args, **kwargs)
+        if "conn" in kwargs:
+            return await func(kwargs.pop("conn"), *args, **kwargs)
 
-        async with get_pool().acquire() as conn:
-            async with conn.cursor() as cursor:
-                return await func(cursor, *args, **kwargs)
+        async with pool.acquire() as connection:
+            return await func(connection, *args, **kwargs)
 
     return wrapped
 
@@ -69,11 +63,13 @@ def build_insert_query(instance, upsert=False, ignore_existing=False):
     updates = []
     for field in dataclasses.fields(dataclass):
         column_names.append(field.name)
-        column_values.append(convert_to_type(getattr(instance, field.name), field.type))
+        column_values.append(
+            convert_to_type(getattr(instance, field.name), field.type, to_pg=True)
+        )
 
         if upsert:
             updates.append(f"{field.name}=excluded.{field.name}")
-    values = ", ".join(["?"] * len(column_names))
+    values = ", ".join([f"${i}" for i in range(1, len(column_names) + 1)])
 
     upsert_contents = ""
     if upsert:
@@ -110,16 +106,36 @@ def build_select_query(instance, where=None):
     """
 
 
-def convert_to_type(value, target_type):
+def convert_to_type(value, target_type, to_pg=False, from_pg=False):
     if typing.get_origin(target_type) is typing.Union:
         if type(None) in typing.get_args(target_type):
             if value is None:
                 return None
-            return next(i for i in typing.get_args(target_type) if i is not type(None))(
-                value
+            target_type = next(
+                i for i in typing.get_args(target_type) if i is not type(None)
             )
-        assert False
-    return target_type(value)
+        else:
+            assert False
+
+    if typing.get_origin(target_type) == list:
+        return list(value)
+
+    if type(value) == target_type:
+        return value
+
+    if to_pg and target_type == JSONB:
+        return json.dumps(value)
+
+    if from_pg and target_type == JSONB:
+        return json.loads(value)
+
+    try:
+        return target_type(value)
+    except Exception:
+        print(type(value))
+        print(target_type)
+        print(typing.get_origin(target_type))
+        raise
 
 
 def table_name(model):
@@ -135,3 +151,15 @@ class BaseModel:
                     "old": getattr(other, field.name),
                     "new": getattr(self, field.name),
                 }
+
+    @classmethod
+    def from_record(cls, record):
+        return cls(
+            **{
+                field.name: convert_to_type(
+                    record[field.name], field.type, from_pg=True
+                )
+                for field in dataclasses.fields(cls)
+            }
+        )
+

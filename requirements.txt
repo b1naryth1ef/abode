@@ -1,3 +1,3 @@
-aioodbc
+asyncpg
 discord.py
 sanic

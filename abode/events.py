@@ -17,7 +17,7 @@ async def backfill(client, message, args):
         await message.add_reaction(client.get_emoji(494901623731126272))
 
 
-ommands = {"backfill": backfill}
+commands = {"backfill": backfill}
 
 
 async def on_ready(client):

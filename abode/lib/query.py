@@ -199,11 +199,14 @@ def resolve_model_field(field_name, model, use_subquery_optimize=False):
 
     for field in dataclasses.fields(model):
         if field.name == field_name:
+            if field.name in model._fts:
+                return f"{table_name(model)}.{field.name}", FTS(field.type), {}
+
             return f"{table_name(model)}.{field.name}", field.type, {}
     raise Exception(f"no such field on {model}: `{field_name}``")
 
 
-def _compile_field_query_op(field_type, token):
+def _compile_field_query_op(field_type, token, varidx):
     """
     Compiles a single token against a given field type into a single query filter.
     Sadly this function also encodes some more complex logic about querying, such
@@ -212,6 +215,7 @@ def _compile_field_query_op(field_type, token):
     Returns a tuple of the filter operator and the processed token value as an
     argument to the operator.
     """
+    var = f"${varidx}"
     assert token["type"] in ("symbol", "string")
 
     if typing.get_origin(field_type) is typing.Union:
@@ -219,28 +223,30 @@ def _compile_field_query_op(field_type, token):
         field_type = next(i for i in args if i != type(None))
 
     if field_type == FTS:
+        return ("@@", token["value"], f"to_tsquery({var})")
+        # return ("@@", to_tsquery('create & table')
         # Probably need to do something smarter for strings? maybe...
-        return ("MATCH", token["value"])
+        # return ("MATCH", token["value"], var)
     elif field_type == Snowflake:
-        return ("=", token["value"])
+        return ("=", token["value"], var)
     elif field_type == str or field_type == typing.Optional[str]:
         if token.get("exact"):
-            return ("=", token["value"])
+            return ("=", token["value"], var)
         elif token["type"] == "symbol":
             # TODO: regex this so we can handle escapes?
             if "*" in token["value"]:
-                return ("LIKE", token["value"].replace("*", "%"))
-            return ("LIKE", "%" + token["value"] + "%")
+                return ("ILIKE", token["value"].replace("*", "%"), var)
+            return ("ILIKE", "%" + token["value"] + "%", var)
         else:
             # Like just gives us case insensitivity here
-            return ("LIKE", token["value"])
+            return ("ILIKE", token["value"], var)
     else:
         print(token)
         raise Exception(f"cannot query against field of type {field_type}")
 
 
 def _compile_token_for_query(
-    token, model, field=None, field_type=None, use_subquery_optimize=False
+    token, model, field=None, field_type=None, use_subquery_optimize=False, varidx=0
 ):
     """
     Compile a single token into a single filter against the model.
@@ -253,51 +259,59 @@ def _compile_token_for_query(
             token["name"], model, use_subquery_optimize=use_subquery_optimize
         )
         token["value"]["exact"] = token["exact"]
-        where, variables, joins = _compile_token_for_query(
-            token["value"], model, field=field, field_type=field_type
+        where, variables, joins, varidx = _compile_token_for_query(
+            token["value"], model, field=field, field_type=field_type, varidx=varidx
         )
         joins.update(field_joins)
-        return where, variables, joins
+        return where, variables, joins, varidx
     elif token["type"] == "symbol":
         if token["value"] in ("AND", "OR", "NOT"):
-            return (token["value"], [], {})
+            return (token["value"], [], {}, varidx)
         elif isinstance(field_type, SubqueryOptimized):
-            op, arg = _compile_field_query_op(field_type.inner, token)
+            varidx += 1
+            op, arg, var = _compile_field_query_op(field_type.inner, token, varidx)
             return (
-                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM {table_name(field_type.ref_model)} WHERE {field} {op} ?)",
+                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM "
+                f"{table_name(field_type.ref_model)} WHERE {field} {op} {var})",
                 [arg],
                 {},
+                varidx,
             )
         elif field:
             # messages.guild_id IN (SELECT id FROM guilds WHERE x LIKE y)
-            op, arg = _compile_field_query_op(field_type, token)
-            return (f"{field} {op} ?", [arg], {})
+            varidx += 1
+            op, arg, var = _compile_field_query_op(field_type, token, varidx)
+            return (f"{field} {op} {var}", [arg], {}, varidx)
         else:
             value = token["value"]
             raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
     elif token["type"] == "string" and field:
         if isinstance(field_type, SubqueryOptimized):
-            op, arg = _compile_field_query_op(field_type.inner, token)
+            varidx += 1
+            op, arg, var = _compile_field_query_op(field_type.inner, token, varidx)
             return (
-                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM {table_name(field_type.ref_model)} WHERE {field} {op} ?)",
+                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM "
+                f"{table_name(field_type.ref_model)} WHERE {field} {op} {var})",
                 [arg],
                 {},
+                varidx,
             )
-        op, arg = _compile_field_query_op(field_type, token)
-        return (f"{field} {op} ?", [arg], {})
+        varidx += 1
+        op, arg, var = _compile_field_query_op(field_type, token, varidx)
+        return (f"{field} {op} {var}", [arg], {}, varidx)
     elif token["type"] == "group":
         where = []
         variables = []
         joins = {}
         for child_token in token["value"]:
             child_token["exact"] = token.get("exact", False)
-            where_part, variables_part, joins_part = _compile_token_for_query(
-                child_token, model, field=field, field_type=field_type
+            where_part, variables_part, joins_part, varidx = _compile_token_for_query(
+                child_token, model, field=field, field_type=field_type, varidx=varidx
             )
             joins.update(joins_part)
             where.append(where_part)
             variables.extend(variables_part)
-        return " ".join(where), variables, joins
+        return " ".join(where), variables, joins, varidx
     else:
         assert False
 
@@ -312,12 +326,12 @@ def _compile_query_for_model(
     use_subquery_optimize=False,
 ):
     parts = []
+    varidx = 0
     for token in tokens:
-        parts.append(
-            _compile_token_for_query(
-                token, model, use_subquery_optimize=use_subquery_optimize
-            )
+        a, b, c, varidx = _compile_token_for_query(
+            token, model, use_subquery_optimize=use_subquery_optimize, varidx=varidx
         )
+        parts.append((a, b, c))
 
     where = []
     variables = []
@@ -335,8 +349,6 @@ def _compile_query_for_model(
     joins.update(order_joins)
     assert order_dir in ("ASC", "DESC")
     order_by = f" ORDER BY {field} {order_dir}"
-
-    print(joins)
 
     if joins:
         joins = "".join(f" JOIN {table} ON {cond}" for table, cond in joins.items())

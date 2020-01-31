@@ -1,14 +1,12 @@
 CREATE TABLE IF NOT EXISTS emoji (
-    id text PRIMARY KEY,
-    guild_id text,
-    author_id text,
+    id BIGINT PRIMARY KEY,
+    guild_id BIGINT,
+    author_id BIGINT,
     name text,
-    require_colons integer,
-    managed integer,
-    animated integer,
-    roles text,
-    created_at integer,
-    
-    -- currently unused
-    deleted integer
+    require_colons boolean,
+    managed boolean,
+    animated boolean,
+    roles jsonb,
+    created_at timestamp,
+    deleted boolean
 );

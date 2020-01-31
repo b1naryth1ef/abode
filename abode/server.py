@@ -49,7 +49,7 @@ async def route_search(request, model):
             offset=(limit * (page - 1)),
             order_by=order_by,
             order_dir=order_dir,
-            use_subquery_optimize=True,
+            use_subquery_optimize=False,
         )
     except Exception as e:
         return json({"error": e})
@@ -65,12 +65,10 @@ async def route_search(request, model):
     results = []
     try:
         async with get_pool().acquire() as conn:
-            async with conn.cursor() as cursor:
-                start = time.time()
-                await cursor.execute(sql, *args)
-                results = await cursor.fetchall()
-                _debug["ms"] = int((time.time() - start) * 1000)
+            start = time.time()
+            results = await conn.fetch(sql, *args)
+            _debug["ms"] = int((time.time() - start) * 1000)
     except Exception as e:
         return json({"error": e, "_debug": _debug})
 
-    return json({"results": [model.from_attrs(i) for i in results], "_debug": _debug})
+    return json({"results": [model.from_record(i) for i in results], "_debug": _debug})

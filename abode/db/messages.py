@@ -1,11 +1,11 @@
 from dataclasses import dataclass, fields
+from datetime import datetime
 from typing import Optional
 from . import (
-    with_cursor,
+    with_conn,
     build_insert_query,
-    to_json_str,
     convert_to_type,
-    FTS,
+    JSONB,
     Snowflake,
     BaseModel,
 )
@@ -15,46 +15,47 @@ from .guilds import Guild
 @dataclass
 class Message(BaseModel):
     id: Snowflake
-    guild_id: Snowflake
     channel_id: Snowflake
+    guild_id: Optional[Snowflake]
     author_id: Optional[Snowflake]
     webhook_id: Optional[Snowflake]
     tts: bool
     type: int
     content: str
-    embeds: str
+    embeds: Optional[JSONB]
     mention_everyone: bool
     flags: int
-    activity: str
-    application: str
-    created_at: int
-    edited_at: Optional[int]
+    activity: Optional[JSONB]
+    application: Optional[JSONB]
+    created_at: datetime
+    edited_at: Optional[datetime]
     deleted: bool
 
     # TODO: eventually these could be types, but I am far too baked for that
     #   refactor at the moment.
     _pk = "id"
     _refs = {"guild": (Guild, ("guild_id", "id"), True)}
-    _external_indexes = {"content": ("messages_fts", ("id", "rowid"), FTS)}
+    _fts = {"content"}
+    _external_indexes = {}
 
     @classmethod
     def from_discord(cls, message, deleted=False):
         return cls(
-            id=str(message.id),
-            guild_id=str(message.guild.id if message.guild else None),
-            channel_id=str(message.channel.id),
-            author_id=str(message.author.id),
-            webhook_id=str(message.webhook_id) if message.webhook_id else None,
+            id=message.id,
+            guild_id=message.guild.id if message.guild else None,
+            channel_id=message.channel.id,
+            author_id=message.author.id,
+            webhook_id=message.webhook_id if message.webhook_id else None,
             tts=bool(message.tts),
             type=message.type.value,
-            content=message.content,
-            embeds=to_json_str([i.to_dict() for i in message.embeds]),
+            content=message.content.encode("utf-8"),
+            embeds=[i.to_dict() for i in message.embeds],
             mention_everyone=bool(message.mention_everyone),
             flags=message.flags.value,
-            activity=to_json_str(message.activity),
-            application=to_json_str(message.application),
-            created_at=message.created_at.timestamp(),
-            edited_at=message.edited_at.timestamp() if message.edited_at else None,
+            activity=message.activity,
+            application=message.application,
+            created_at=message.created_at,
+            edited_at=message.edited_at,
             deleted=deleted,
         )
 
@@ -70,19 +71,19 @@ class Message(BaseModel):
         return cls(**kwargs)
 
 
-@with_cursor
-async def insert_message(cursor, message):
+@with_conn
+async def insert_message(conn, message):
     message = Message.from_discord(message)
 
     query, args = build_insert_query(message, ignore_existing=True)
     try:
-        await cursor.execute(query, *args)
+        await conn.execute(query, *args)
     except Exception:
         print(query)
         print(args)
         raise
 
 
-@with_cursor
-async def update_message(cursor, message):
+@with_conn
+async def update_message(conn, message):
     pass
