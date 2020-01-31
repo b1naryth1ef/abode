@@ -37,6 +37,7 @@ class Guild(BaseModel):
 @with_conn
 async def upsert_guild(conn, guild, is_currently_joined=None):
     from .emoji import upsert_emoji
+    from .users import upsert_user
 
     new_guild = Guild.from_attrs(guild, is_currently_joined=is_currently_joined)
 
@@ -56,3 +57,6 @@ async def upsert_guild(conn, guild, is_currently_joined=None):
 
     for emoji in guild.emojis:
         await upsert_emoji(emoji, conn=conn)
+
+    for member in guild.members:
+        await upsert_user(member, conn=conn)

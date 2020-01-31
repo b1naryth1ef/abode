@@ -73,15 +73,19 @@ class Message(BaseModel):
 
 @with_conn
 async def insert_message(conn, message):
-    message = Message.from_discord(message)
+    from .users import upsert_user
 
-    query, args = build_insert_query(message, ignore_existing=True)
+    new_message = Message.from_discord(message)
+
+    query, args = build_insert_query(new_message, ignore_existing=True)
     try:
         await conn.execute(query, *args)
     except Exception:
         print(query)
         print(args)
         raise
+
+    await upsert_user(message.author)
 
 
 @with_conn

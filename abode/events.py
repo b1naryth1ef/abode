@@ -1,3 +1,4 @@
+import asyncio
 from abode.db.guilds import upsert_guild
 from abode.db.messages import insert_message
 from abode.backfill import backfill_channel
@@ -22,9 +23,13 @@ commands = {"backfill": backfill}
 
 async def on_ready(client):
     print("Connected!")
-    for guild in client.guilds:
-        print(f"Updating guild {guild.name}")
-        await upsert_guild(guild, is_currently_joined=True)
+
+    await asyncio.wait(
+        [upsert_guild(guild, is_currently_joined=True) for guild in client.guilds]
+    )
+    # for guild in client.guilds:
+    #     print(f"Updating guild {guild.name}")
+    #     await upsert_guild(guild, is_currently_joined=True)
 
 
 async def on_guild_join(client, guild):
