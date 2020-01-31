@@ -1,0 +1,14 @@
+body {
+    font-family: sans-serif;
+    font-size: 0.8rem;
+    padding-bottom: 0.9rem;
+  }
+
+.search-container {
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+.search-container input {
+    width: 33%;
+}

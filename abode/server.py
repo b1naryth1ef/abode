@@ -8,6 +8,10 @@ from abode.db.emoji import Emoji
 from abode.db import get_pool
 
 app = Sanic()
+app.static("/", "./frontend/index.html")
+app.static("/styles.css", "./frontend/styles.css")
+app.static("/script.js", "./frontend/script.js")
+app.static("/templates/", "./frontend/templates")
 
 
 SUPPORTED_MODELS = {
