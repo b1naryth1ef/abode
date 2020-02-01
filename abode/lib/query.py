@@ -205,7 +205,7 @@ def resolve_model_field(field_name, model):
         if field.name == field_name:
             if field.name in model._fts:
                 return (
-                    f"to_tsvector('english', {table_name(model)}.{field.name})",
+                    f"{table_name(model)}.{field.name}",
                     FTS(field.type),
                     {},
                 )
@@ -214,7 +214,7 @@ def resolve_model_field(field_name, model):
     raise Exception(f"no such field on {model}: `{field_name}``")
 
 
-def _compile_field_query_op(field_type, token, varidx):
+def _compile_field_query_op(field, field_type, token, varidx):
     """
     Compiles a single token against a given field type into a single query filter.
     Sadly this function also encodes some more complex logic about querying, such
@@ -232,23 +232,39 @@ def _compile_field_query_op(field_type, token, varidx):
 
     if isinstance(field_type, FTS):
         if token.get("exact"):
-            return ("=", token["value"], var)
-        return ("@@", token["value"], f"phraseto_tsquery({var})")
+            return (field, "=", token["value"], var)
+        elif token["type"] == "string":
+            return (field, "ILIKE", token["value"], var)
+        return (
+            f"to_tsvector('english', {field})",
+            "@@",
+            token["value"],
+            f"phraseto_tsquery({var})",
+        )
     elif field_type == Snowflake:
-        return ("=", Snowflake(token["value"]), var)
+        return (field, "=", Snowflake(token["value"]), var)
     elif field_type == str or field_type == typing.Optional[str]:
         if token.get("exact"):
-            return ("=", token["value"], var)
+            return (field, "=", token["value"], var)
         elif token["type"] == "symbol":
             # TODO: regex this so we can handle escapes?
             if "*" in token["value"]:
-                return ("ILIKE", token["value"].replace("*", "%"), var)
-            return ("ILIKE", "%" + token["value"] + "%", var)
+                return (field, "ILIKE", token["value"].replace("*", "%"), var)
+            return (field, "ILIKE", "%" + token["value"] + "%", var)
         else:
             # Like just gives us case insensitivity here
-            return ("ILIKE", token["value"], var)
+            return (field, "ILIKE", token["value"], var)
     elif field_type == int or field_type == typing.Optional[int]:
-        return ("=", int(token["value"]), var)
+        return (field, "=", int(token["value"]), var)
+    elif field_type == bool or field_type == typing.Optional[bool]:
+        return (
+            field,
+            "=",
+            {"t": True, "f": False, "true": True, "false": False}[
+                token["value"].lower()
+            ],
+            var,
+        )
     else:
         print(token)
         raise Exception(f"cannot query against field of type {field_type}")
@@ -293,16 +309,17 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
         if token["value"] in ("AND", "OR", "NOT"):
             return (token["value"], [], {}, varidx, None)
         elif field:
-            # messages.guild_id IN (SELECT id FROM guilds WHERE x LIKE y)
             varidx += 1
-            op, arg, var = _compile_field_query_op(field_type, token, varidx)
+            field, op, arg, var = _compile_field_query_op(
+                field, field_type, token, varidx
+            )
             return (f"{field} {op} {var}", [arg], {}, varidx, None)
         else:
             joins = _compile_model_refs_join(model, token["value"])
             return (f"true", [], joins, varidx, None)
     elif token["type"] == "string" and field:
         varidx += 1
-        op, arg, var = _compile_field_query_op(field_type, token, varidx)
+        field, op, arg, var = _compile_field_query_op(field, field_type, token, varidx)
         return (f"{field} {op} {var}", [arg], {}, varidx, None)
     elif token["type"] == "regex" and field:
         varidx += 1
@@ -338,6 +355,7 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
     elif token["type"] == "return":
         return (None, None, None, varidx, [i["value"] for i in token["value"]])
     else:
+        print(token)
         assert False
 
 
