@@ -9,7 +9,7 @@
     <tr>
         {% for col in row %}
         <td>
-            <p>{{ col }}</p>
+            <p>{{ col|safe }}</p>
         </td>
         {% endfor %}
     </tr>

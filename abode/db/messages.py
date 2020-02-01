@@ -43,10 +43,6 @@ class Message(BaseModel):
     }
     _fts = {"content"}
 
-    def autofield_has_attachment(self):
-        ""
-        pass
-
     @classmethod
     def from_discord(cls, message, deleted=False):
         return cls(

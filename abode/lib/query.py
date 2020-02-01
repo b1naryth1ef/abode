@@ -183,7 +183,7 @@ def _resolve_foreign_model_field(field_name, model, joins=None):
     return (f"{table_name(ref_model)}.{field_name}", ref_type, joins)
 
 
-def resolve_model_field(field_name, model):
+def resolve_model_field(field_name, model, allow_virtual=False):
     """
     Resolves a field name within a given model. This function will generate joins
     for cases where the target field is on a relation or is stored within an
@@ -200,6 +200,9 @@ def resolve_model_field(field_name, model):
     """
     if "." in field_name:
         return _resolve_foreign_model_field(field_name, model)
+
+    if allow_virtual and field_name in model._virtual_fields:
+        return (None, None, {})
 
     for field in dataclasses.fields(model):
         if field.name == field_name:
@@ -410,9 +413,10 @@ def _compile_query_for_model(
     models = {model: None}
     if return_fields:
         for field in return_fields:
-            _, _, joins_part = resolve_model_field(field, model)
-            joins.update(joins_part)
-            models.update({k: None for k in joins.keys()})
+            _, _, joins_part = resolve_model_field(field, model, allow_virtual=True)
+            if joins is not None:
+                joins.update(joins_part)
+                models.update({k: None for k in joins.keys()})
 
     if include_foreign_data:
         for ref_model, join_on, always in model._refs.values():
@@ -487,6 +491,12 @@ def _resolve_return_field(model, field):
     return model, field
 
 
+def _get_field_offset(record_offsets, model, field_name):
+    fields = dataclasses.fields(model)
+    offset = record_offsets[model] + [i.name for i in fields].index(field_name)
+    return offset, next(i for i in fields if i.name == field_name)
+
+
 def decode_query_results(models, return_fields, results):
     # TODO: leaky af
     from abode.db import convert_to_type
@@ -501,26 +511,47 @@ def decode_query_results(models, return_fields, results):
         record_offsets[model] = idx
         idx += len(dataclasses.fields(model))
 
-    column_offsets = {}
+    columns = []
     for field in return_fields:
         model, field = _resolve_return_field(models[0], field)
-        fields = dataclasses.fields(model)
-        offset = record_offsets[model] + [i.name for i in fields].index(field)
-        column_offsets[offset] = next(i for i in fields if i.name == field)
+        if field in model._virtual_fields:
+            offsets = {}
+            for field_dep in model._virtual_fields[field]:
+                offset, field_dep = _get_field_offset(record_offsets, model, field_dep)
+                offsets[offset] = field_dep
+            columns.append(("virtual", field, offsets, getattr(model, field)))
+        else:
+            offset, field = _get_field_offset(record_offsets, model, field)
+            columns.append(("offset", field, offset))
 
     rows = []
     for result_row in results:
-        rows.append(
-            [
-                convert_to_type(
-                    convert_to_type(result_row[offset], field.type, from_pg=True),
-                    field.type,
-                    to_js=True,
+        row = []
+
+        for column in columns:
+            if column[0] == "offset":
+                field, offset = column[1:]
+                row.append(
+                    convert_to_type(
+                        convert_to_type(result_row[offset], field.type, from_pg=True),
+                        field.type,
+                        to_js=True,
+                    )
                 )
-                for offset, field in column_offsets.items()
-            ]
-        )
+            elif column[0] == "virtual":
+                field, offsets, fn = column[1:]
+                args = [
+                    convert_to_type(
+                        convert_to_type(result_row[offset], field.type, from_pg=True),
+                        field.type,
+                        to_js=True,
+                    )
+                    for offset, field in offsets.items()
+                ]
+
+                # TODO: typecast based on fn
+                row.append(fn(*args))
+
+        rows.append(row)
 
     return rows, return_fields
-
-    # fields, results = decode_query_results(models, return_fields, results)

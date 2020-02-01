@@ -28,7 +28,18 @@ class Emoji(BaseModel):
     _pk = "id"
     _table_name = "emoji"
     _refs = {"guild": (Guild, ("guild_id", "id"), True)}
-    _fts = set()
+    _virtual_fields = {"image": ("id", "animated"), "image_url": ("id", "animated")}
+
+    @staticmethod
+    def image(id, animated):
+        # TODO: leaky, idk how to avoid
+        ext = "gif" if animated else "png"
+        return f'<img src="https://cdn.discordapp.com/emojis/{id}.{ext}"></img>'
+
+    @staticmethod
+    def image_url(id, animated):
+        ext = "gif" if animated else "png"
+        return f"https://cdn.discordapp.com/emojis/{id}.{ext}"
 
     @classmethod
     def from_discord(cls, emoji, deleted=False):

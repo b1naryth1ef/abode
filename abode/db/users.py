@@ -21,8 +21,6 @@ class User(BaseModel):
     system: bool
 
     _pk = "id"
-    _refs = {}
-    _fts = set()
 
     @classmethod
     def from_discord(cls, user):

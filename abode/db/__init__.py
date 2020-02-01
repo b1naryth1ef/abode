@@ -162,6 +162,10 @@ def table_name(model):
 
 
 class BaseModel:
+    _refs = {}
+    _fts = set()
+    _virtual_fields = {}
+
     def serialize(self, **kwargs):
         return {
             field.name: convert_to_type(
