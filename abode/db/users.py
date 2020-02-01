@@ -22,7 +22,6 @@ class User(BaseModel):
 
     _pk = "id"
     _refs = {}
-    _external_indexes = {}
     _fts = set()
 
     @classmethod

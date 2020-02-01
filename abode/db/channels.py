@@ -42,7 +42,6 @@ class Channel(BaseModel):
         "guild": (Guild, ("guild_id", "id")),
         "owner": (User, ("owner_id", "id")),
     }
-    _external_indexes = {}
     _fts = set()
 
     @classmethod

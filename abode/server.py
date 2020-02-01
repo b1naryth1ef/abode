@@ -1,7 +1,7 @@
 import time
 from sanic import Sanic
 from sanic.response import json
-from abode.lib.query import compile_query
+from abode.lib.query import compile_query, decode_query_record
 from abode.db.guilds import Guild
 from abode.db.messages import Message
 from abode.db.emoji import Emoji
@@ -43,16 +43,18 @@ async def route_search(request, model):
     page = request.json.get("page", 1)
     order_by = request.json.get("order_by")
     order_dir = request.json.get("order_dir", "ASC")
+    include_foreign_data = request.json.get("foreign_data", True)
 
     query = request.json.get("query", "")
     try:
-        sql, args = compile_query(
+        sql, args, models = compile_query(
             query,
             model,
             limit=limit,
             offset=(limit * (page - 1)),
             order_by=order_by,
             order_dir=order_dir,
+            include_foreign_data=include_foreign_data,
         )
     except Exception as e:
         return json({"error": e})
@@ -60,9 +62,8 @@ async def route_search(request, model):
     _debug = {
         "args": args,
         "sql": sql,
-        "limit": limit,
-        "page": page,
-        "order": [order_by, order_dir],
+        "request": request.json,
+        "models": [i.__name__ for i in models],
     }
 
     results = []
@@ -74,4 +75,16 @@ async def route_search(request, model):
     except Exception as e:
         return json({"error": e, "_debug": _debug})
 
-    return json({"results": [model.from_record(i) for i in results], "_debug": _debug})
+    try:
+        results = [list(decode_query_record(row, models)) for row in results]
+        return json(
+            {
+                "results": {
+                    model.__name__.lower(): [i[idx] for i in results]
+                    for idx, model in enumerate(models)
+                },
+                "_debug": _debug,
+            }
+        )
+    except Exception as e:
+        return json({"error": e, "_debug": _debug})

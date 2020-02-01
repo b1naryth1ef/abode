@@ -157,13 +157,10 @@ class BaseModel:
                 }
 
     @classmethod
-    def from_record(cls, record, offset=0):
+    def from_record(cls, record):
         return cls(
             **{
-                field.name: convert_to_type(
-                    record[idx + offset], field.type, from_pg=True
-                )
+                field.name: convert_to_type(record[idx], field.type, from_pg=True)
                 for idx, field in enumerate(dataclasses.fields(cls))
             }
         )
-

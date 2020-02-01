@@ -28,7 +28,6 @@ class Emoji(BaseModel):
     _pk = "id"
     _table_name = "emoji"
     _refs = {"guild": (Guild, ("guild_id", "id"))}
-    _external_indexes = {}
     _fts = set()
 
     @classmethod

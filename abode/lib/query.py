@@ -157,11 +157,7 @@ def _resolve_foreign_model_field(field_name, model, joins=None):
         joins = {}
 
     joins.update(
-        {
-            table_name(
-                ref_model
-            ): f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
-        }
+        {ref_model: f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"}
     )
 
     if rest:
@@ -190,18 +186,14 @@ def resolve_model_field(field_name, model):
     if "." in field_name:
         return _resolve_foreign_model_field(field_name, model)
 
-    if field_name in model._external_indexes:
-        ref_table, on, field_type = model._external_indexes[field_name]
-        return (
-            f"{ref_table}.{field_name}",
-            field_type,
-            {ref_table: f"{table_name(model)}.{on[0]} = {ref_table}.{on[1]}"},
-        )
-
     for field in dataclasses.fields(model):
         if field.name == field_name:
             if field.name in model._fts:
-                return f"{table_name(model)}.{field.name}", FTS(field.type), {}
+                return (
+                    f"to_tsvector('english', {table_name(model)}.{field.name})",
+                    FTS(field.type),
+                    {},
+                )
 
             return f"{table_name(model)}.{field.name}", field.type, {}
     raise Exception(f"no such field on {model}: `{field_name}``")
@@ -280,6 +272,22 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
             return (f"{field} {op} {var}", [arg], {}, varidx)
         else:
             value = token["value"]
+
+            # TODO: this is a hackfix to allow people to force-join refs, but
+            #  its not recursive and should be handled in a better way.
+            if value in model._refs:
+                ref_model, on = model._refs[value]
+
+                return (
+                    "true",
+                    [],
+                    {
+                        ref_model: f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
+                    },
+                    varidx,
+                )
+
+            print(resolve_model_field(value, model))
             raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
     elif token["type"] == "string" and field:
         if isinstance(field_type, SubqueryOptimized):
@@ -310,6 +318,12 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
         return "(" + " ".join(where) + ")", variables, joins, varidx
     else:
         assert False
+
+
+def _compile_selector(model):
+    return ", ".join(
+        f"{table_name(model)}.{field.name}" for field in dataclasses.fields(model)
+    )
 
 
 def _compile_query_for_model(
@@ -344,18 +358,26 @@ def _compile_query_for_model(
     else:
         order_by = ""
 
-    selectors = [table_name(model)]
-    # TODO: to provide a good abi for this things will get complicated, we need
-    #  to basically explicitly select fields for each model (meaning we need models
-    #  not tables here), and then return the ordering of those fields and their models
-    #  in some way where the caller can deserialize data into records. This is
-    #  required because asyncpg gives very minimal information about result columns.
-    if include_foreign_data and joins:
-        selectors.extend(joins.keys())
-    selectors = ", ".join(f"{i}.*" for i in selectors)
+    models = [model]
+    if include_foreign_data:
+        for ref_model, join_on in model._refs.values():
+            if ref_model not in joins:
+                joins.update(
+                    {
+                        ref_model: f"{table_name(model)}.{join_on[0]} = {table_name(ref_model)}.{join_on[1]}"
+                    }
+                )
+            models.append(ref_model)
+
+    if len(models) > 1:
+        selectors = ", ".join(_compile_selector(model) for model in models)
+    else:
+        selectors = f"{table_name(model)}.*"
 
     if joins:
-        joins = "".join(f" JOIN {table} ON {cond}" for table, cond in joins.items())
+        joins = "".join(
+            f" JOIN {table_name(model)} ON {cond}" for model, cond in joins.items()
+        )
     else:
         joins = ""
 
@@ -376,9 +398,19 @@ def _compile_query_for_model(
     return (
         f"SELECT {selectors} FROM {table_name(model)}{joins}{where}{order_by}{suffix}",
         tuple(variables),
+        tuple(models),
     )
 
 
 def compile_query(query, model, **kwargs):
     tokens = QueryParser.parsed(query)
     return _compile_query_for_model(tokens, model, **kwargs)
+
+
+def decode_query_record(record, models):
+    idx = 0
+    for model in models:
+        num_fields = len(dataclasses.fields(model))
+        model_data = record[idx : idx + num_fields]
+        idx += num_fields
+        yield model.from_record(model_data)

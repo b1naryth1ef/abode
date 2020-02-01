@@ -40,7 +40,6 @@ class Message(BaseModel):
         "author": (User, ("author_id", "id")),
     }
     _fts = {"content"}
-    _external_indexes = {}
 
     @classmethod
     def from_discord(cls, message, deleted=False):

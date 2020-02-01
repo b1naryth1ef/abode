@@ -30,7 +30,6 @@ class Guild(BaseModel):
 
     _pk = "id"
     _refs = {"owner": (User, ("owner_id", "id"))}
-    _external_indexes = {}
     _fts = set()
 
     @classmethod

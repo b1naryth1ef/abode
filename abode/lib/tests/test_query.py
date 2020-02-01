@@ -1,6 +1,7 @@
-from abode.lib.query import QueryParser, compile_query
+from abode.lib.query import QueryParser, compile_query, _compile_selector
 from abode.db.guilds import Guild
 from abode.db.messages import Message
+from abode.db.users import User
 
 
 def test_parse_basic_queries():
@@ -105,46 +106,55 @@ def test_compile_basic_queries():
     assert compile_query("name:blob", Guild) == (
         "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1",
         ("%blob%",),
+        (Guild,),
     )
 
     assert compile_query('name:"blob"', Guild) == (
         "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1",
         ("blob",),
+        (Guild,),
     )
 
     assert compile_query("name:(blob emoji)", Guild) == (
         "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2)",
         ("%blob%", "%emoji%",),
+        (Guild,),
     )
 
     assert compile_query("name:(blob AND emoji)", Guild) == (
         "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2)",
         ("%blob%", "%emoji%",),
+        (Guild,),
     )
 
     assert compile_query("name:(discord AND NOT api)", Guild) == (
         "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND NOT guilds.name ILIKE $2)",
         ("%discord%", "%api%",),
+        (Guild,),
     )
 
     assert compile_query("id:1", Guild) == (
         "SELECT guilds.* FROM guilds WHERE guilds.id = $1",
         (1,),
+        (Guild,),
     )
 
     assert compile_query("", Guild, limit=100, offset=150, order_by="id") == (
         "SELECT guilds.* FROM guilds ORDER BY guilds.id ASC LIMIT 100 OFFSET 150",
         (),
+        (Guild,),
     )
 
     assert compile_query("", Guild, order_by="id", order_dir="DESC") == (
         "SELECT guilds.* FROM guilds ORDER BY guilds.id DESC",
         (),
+        (Guild,),
     )
 
     assert compile_query("id=1", Guild) == (
         "SELECT guilds.* FROM guilds WHERE guilds.id = $1",
         (1,),
+        (Guild,),
     )
 
 
@@ -152,36 +162,49 @@ def test_compile_complex_queries():
     assert compile_query("name:blob OR name:api", Guild) == (
         "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 OR guilds.name ILIKE $2",
         ("%blob%", "%api%"),
+        (Guild,),
     )
 
     assert compile_query("guild.name:blob", Message) == (
         "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.name ILIKE $1",
         ("%blob%",),
+        (Message,),
     )
 
     assert compile_query("content:yeet", Message) == (
-        "SELECT messages.* FROM messages WHERE messages.content @@ to_tsquery($1)",
+        "SELECT messages.* FROM messages WHERE to_tsvector('english', messages.content) @@ to_tsquery($1)",
         ("yeet",),
+        (Message,),
     )
 
     assert compile_query('guild.name:(a "b")', Message) == (
         "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE (guilds.name ILIKE $1 AND "
         "guilds.name ILIKE $2)",
         ("%a%", "b"),
+        (Message,),
     )
 
     assert compile_query("guild.owner.name:Danny", Message) == (
         "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id JOIN users ON "
         "guilds.owner_id = users.id WHERE users.name ILIKE $1",
         ("%Danny%",),
+        (Message,),
     )
 
+    message_selector = _compile_selector(Message)
+    guild_selector = _compile_selector(Guild)
+    author_selector = _compile_selector(User)
+
     assert compile_query("", Message, include_foreign_data=True) == (
-        "SELECT messages.* FROM messages",
+        f"SELECT {message_selector}, {guild_selector}, {author_selector} FROM messages JOIN guilds ON messages.guild_id = guilds.id"
+        " JOIN users ON messages.author_id = users.id",
         (),
+        (Message, Guild, User),
     )
 
     assert compile_query("guild.id:1", Message, include_foreign_data=True) == (
-        "SELECT messages.*, guilds.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.id = $1",
+        f"SELECT {message_selector}, {guild_selector}, {author_selector} FROM messages JOIN guilds ON messages.guild_id = guilds.id"
+        " JOIN users ON messages.author_id = users.id WHERE guilds.id = $1",
         (1,),
+        (Message, Guild, User),
     )
