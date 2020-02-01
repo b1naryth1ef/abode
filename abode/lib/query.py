@@ -324,6 +324,7 @@ def _compile_query_for_model(
     order_by=None,
     order_dir="ASC",
     use_subquery_optimize=False,
+    include_foreign_data=False,
 ):
     parts = []
     varidx = 0
@@ -350,6 +351,16 @@ def _compile_query_for_model(
     else:
         order_by = ""
 
+    selectors = [table_name(model)]
+    # TODO: to provide a good abi for this things will get complicated, we need
+    #  to basically explicitly select fields for each model (meaning we need models
+    #  not tables here), and then return the ordering of those fields and their models
+    #  in some way where the caller can deserialize data into records. This is
+    #  required because asyncpg gives very minimal information about result columns.
+    if include_foreign_data and joins:
+        selectors.extend(joins.keys())
+    selectors = ", ".join(f"{i}.*" for i in selectors)
+
     if joins:
         joins = "".join(f" JOIN {table} ON {cond}" for table, cond in joins.items())
     else:
@@ -370,7 +381,7 @@ def _compile_query_for_model(
     suffix = "".join(suffix)
 
     return (
-        f"SELECT {table_name(model)}.* FROM {table_name(model)}{joins}{where}{order_by}{suffix}",
+        f"SELECT {selectors} FROM {table_name(model)}{joins}{where}{order_by}{suffix}",
         tuple(variables),
     )
 

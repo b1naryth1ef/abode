@@ -160,8 +160,8 @@ def test_compile_complex_queries():
     )
 
     assert compile_query("content:yeet", Message) == (
-        "SELECT messages.* FROM messages WHERE " "messages.content ILIKE $1",
-        ("%yeet%",),
+        "SELECT messages.* FROM messages WHERE messages.content @@ to_tsquery($1)",
+        ("yeet",),
     )
 
     assert compile_query('guild.name:(a "b")', Message) == (
@@ -174,4 +174,14 @@ def test_compile_complex_queries():
         "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id JOIN users ON "
         "guilds.owner_id = users.id WHERE users.name ILIKE $1",
         ("%Danny%",),
+    )
+
+    assert compile_query("", Message, include_foreign_data=True) == (
+        "SELECT messages.* FROM messages",
+        (),
+    )
+
+    assert compile_query("guild.id:1", Message, include_foreign_data=True) == (
+        "SELECT messages.*, guilds.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.id = $1",
+        (1,),
     )
