@@ -1,7 +1,8 @@
 import asyncio
 from abode.db.guilds import upsert_guild
 from abode.db.messages import insert_message
-from abode.backfill import backfill_channel
+from abode.db.channels import upsert_channel
+from abode.backfill import backfill_channel, backfill_guild
 
 
 async def backfill(client, message, args):
@@ -18,18 +19,32 @@ async def backfill(client, message, args):
         await message.add_reaction(client.get_emoji(494901623731126272))
 
 
-commands = {"backfill": backfill}
+async def backfillg(client, message, args):
+    guild = client.get_guild(int(args))
+    if guild:
+        await message.add_reaction(client.get_emoji(580596825128697874))
+        await backfill_guild(guild)
+    else:
+        await message.add_reaction(client.get_emoji(494901623731126272))
+
+
+async def backfilldms(client, message, args):
+    await message.add_reaction(client.get_emoji(580596825128697874))
+    for channel in client.private_channels:
+        await backfill_channel(channel)
+
+
+commands = {"backfill": backfill, "backfillg": backfillg, "backfilldms": backfilldms}
 
 
 async def on_ready(client):
     print("Connected!")
 
+    await asyncio.wait([upsert_channel(channel) for channel in client.private_channels])
+
     await asyncio.wait(
         [upsert_guild(guild, is_currently_joined=True) for guild in client.guilds]
     )
-    # for guild in client.guilds:
-    #     print(f"Updating guild {guild.name}")
-    #     await upsert_guild(guild, is_currently_joined=True)
 
 
 async def on_guild_join(client, guild):

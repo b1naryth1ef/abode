@@ -145,6 +145,33 @@ class SubqueryOptimized(object):
         self.join = join
 
 
+def _resolve_foreign_model_field(field_name, model, joins=None):
+    rest = None
+    foreign_field_name, field_name = field_name.split(".", 1)
+    if "." in field_name:
+        field_name, rest = field_name.split(".", 1)
+
+    ref_model, on, _ = model._refs[foreign_field_name]
+
+    if not joins:
+        joins = {}
+
+    joins.update(
+        {
+            table_name(
+                ref_model
+            ): f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
+        }
+    )
+
+    if rest:
+        return _resolve_foreign_model_field(field_name + "." + rest, ref_model, joins)
+
+    _, ref_type, _ = resolve_model_field(field_name, ref_model)
+
+    return (f"{table_name(ref_model)}.{field_name}", ref_type, joins)
+
+
 def resolve_model_field(field_name, model, use_subquery_optimize=False):
     """
     Resolves a field name within a given model. This function will generate joins
@@ -160,34 +187,8 @@ def resolve_model_field(field_name, model, use_subquery_optimize=False):
     >>> resolve_model_field("content", Message)
     ("messages_fts.content", FTS(str), {"messages_fts": "messages.id = messages_fts.rowid"})
     """
-    # TODO: we need to seperate out this logic into another function so we can
-    #  properly recurse and handle x.y.z cases.
-
     if "." in field_name:
-        assert field_name.count(".") == 1
-        left, right = field_name.split(".", 1)
-
-        ref_model, on, can_subquery_optimize = model._refs[left]
-        for ref_field in dataclasses.fields(ref_model):
-            if ref_field.name == right:
-                break
-        else:
-            raise Exception(f"no field `{right}` on model `{ref_model}`")
-
-        if use_subquery_optimize and can_subquery_optimize:
-            # Emit no join
-            # Somehow op results in message.guild_id in (SELECT id FROM guilds WHERE name LIKE xxx)
-            return (right, SubqueryOptimized(ref_field.type, ref_model, on), {})
-        else:
-            return (
-                f"{table_name(ref_model)}.{right}",
-                ref_field.type,
-                {
-                    table_name(
-                        ref_model
-                    ): f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
-                },
-            )
+        return _resolve_foreign_model_field(field_name, model)
 
     if field_name in model._external_indexes:
         ref_table, on, field_type = model._external_indexes[field_name]
@@ -222,7 +223,7 @@ def _compile_field_query_op(field_type, token, varidx):
         args = typing.get_args(field_type)
         field_type = next(i for i in args if i != type(None))
 
-    if field_type == FTS:
+    if isinstance(field_type, FTS):
         return ("@@", token["value"], f"to_tsquery({var})")
     elif field_type == Snowflake:
         return ("=", Snowflake(token["value"]), var)
@@ -237,6 +238,8 @@ def _compile_field_query_op(field_type, token, varidx):
         else:
             # Like just gives us case insensitivity here
             return ("ILIKE", token["value"], var)
+    elif field_type == int or field_type == typing.Optional[int]:
+        return ("=", int(token["value"]), var)
     else:
         print(token)
         raise Exception(f"cannot query against field of type {field_type}")
@@ -339,13 +342,13 @@ def _compile_query_for_model(
         variables.extend(variables_part)
         joins.update(joins_part)
 
-    if not order_by:
-        order_by = model._pk
-
-    field, field_type, order_joins = resolve_model_field(order_by, model)
-    joins.update(order_joins)
-    assert order_dir in ("ASC", "DESC")
-    order_by = f" ORDER BY {field} {order_dir}"
+    if order_by:
+        field, field_type, order_joins = resolve_model_field(order_by, model)
+        joins.update(order_joins)
+        assert order_dir in ("ASC", "DESC")
+        order_by = f" ORDER BY {field} {order_dir}"
+    else:
+        order_by = ""
 
     if joins:
         joins = "".join(f" JOIN {table} ON {cond}" for table, cond in joins.items())

@@ -9,6 +9,7 @@ from . import (
     Snowflake,
     BaseModel,
 )
+from .users import User, upsert_user
 from .guilds import Guild
 
 
@@ -34,7 +35,10 @@ class Message(BaseModel):
     # TODO: eventually these could be types, but I am far too baked for that
     #   refactor at the moment.
     _pk = "id"
-    _refs = {"guild": (Guild, ("guild_id", "id"), True)}
+    _refs = {
+        "guild": (Guild, ("guild_id", "id"), True),
+        "author": (User, ("author_id", "id"), True),
+    }
     _fts = {"content"}
     _external_indexes = {}
 
@@ -73,8 +77,6 @@ class Message(BaseModel):
 
 @with_conn
 async def insert_message(conn, message):
-    from .users import upsert_user
-
     new_message = Message.from_discord(message)
 
     query, args = build_insert_query(new_message, ignore_existing=True)
@@ -85,7 +87,7 @@ async def insert_message(conn, message):
         print(args)
         raise
 
-    await upsert_user(message.author)
+    await upsert_user(message.author, conn=conn)
 
 
 @with_conn

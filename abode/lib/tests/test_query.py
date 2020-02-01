@@ -103,36 +103,36 @@ def test_parse_complex_queries():
 
 def test_compile_basic_queries():
     assert compile_query("name:blob", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1",
         ("%blob%",),
     )
 
     assert compile_query('name:"blob"', Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1",
         ("blob",),
     )
 
     assert compile_query("name:(blob emoji)", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2) ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2)",
         ("%blob%", "%emoji%",),
     )
 
     assert compile_query("name:(blob AND emoji)", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2) ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND guilds.name ILIKE $2)",
         ("%blob%", "%emoji%",),
     )
 
     assert compile_query("name:(discord AND NOT api)", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND NOT guilds.name ILIKE $2) ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE (guilds.name ILIKE $1 AND NOT guilds.name ILIKE $2)",
         ("%discord%", "%api%",),
     )
 
     assert compile_query("id:1", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.id = $1 ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE guilds.id = $1",
         (1,),
     )
 
-    assert compile_query("", Guild, limit=100, offset=150) == (
+    assert compile_query("", Guild, limit=100, offset=150, order_by="id") == (
         "SELECT guilds.* FROM guilds ORDER BY guilds.id ASC LIMIT 100 OFFSET 150",
         (),
     )
@@ -143,39 +143,35 @@ def test_compile_basic_queries():
     )
 
     assert compile_query("id=1", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.id = $1 ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE guilds.id = $1",
         (1,),
     )
 
 
 def test_compile_complex_queries():
     assert compile_query("name:blob OR name:api", Guild) == (
-        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 OR guilds.name ILIKE $2"
-        " ORDER BY guilds.id ASC",
+        "SELECT guilds.* FROM guilds WHERE guilds.name ILIKE $1 OR guilds.name ILIKE $2",
         ("%blob%", "%api%"),
     )
 
     assert compile_query("guild.name:blob", Message) == (
-        "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.name ILIKE $1"
-        " ORDER BY messages.id ASC",
+        "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE guilds.name ILIKE $1",
         ("%blob%",),
     )
 
     assert compile_query("content:yeet", Message) == (
-        "SELECT messages.* FROM messages WHERE "
-        "messages.content ILIKE $1 ORDER BY messages.id ASC",
+        "SELECT messages.* FROM messages WHERE " "messages.content ILIKE $1",
         ("%yeet%",),
-    )
-
-    assert compile_query("guild.name:blob", Message, use_subquery_optimize=True) == (
-        "SELECT messages.* FROM messages WHERE messages.guild_id IN (SELECT id FROM guilds WHERE name ILIKE $1)"
-        " ORDER BY messages.id ASC",
-        ("%blob%",),
     )
 
     assert compile_query('guild.name:(a "b")', Message) == (
         "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id WHERE (guilds.name ILIKE $1 AND "
-        "guilds.name ILIKE $2) ORDER BY messages.id ASC",
+        "guilds.name ILIKE $2)",
         ("%a%", "b"),
     )
 
+    assert compile_query("guild.owner.name:Danny", Message) == (
+        "SELECT messages.* FROM messages JOIN guilds ON messages.guild_id = guilds.id JOIN users ON "
+        "guilds.owner_id = users.id WHERE users.name ILIKE $1",
+        ("%Danny%",),
+    )

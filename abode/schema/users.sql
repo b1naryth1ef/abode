@@ -6,3 +6,5 @@ CREATE TABLE IF NOT EXISTS users (
     bot boolean,
     system boolean
 );
+
+CREATE INDEX IF NOT EXISTS users_name_trgm ON users USING gin (name gin_trgm_ops);

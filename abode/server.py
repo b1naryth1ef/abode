@@ -6,6 +6,7 @@ from abode.db.guilds import Guild
 from abode.db.messages import Message
 from abode.db.emoji import Emoji
 from abode.db.users import User
+from abode.db.channels import Channel
 from abode.db import get_pool
 
 app = Sanic()
@@ -20,6 +21,7 @@ SUPPORTED_MODELS = {
     "message": Message,
     "emoji": Emoji,
     "user": User,
+    "channel": Channel,
 }
 
 

@@ -9,7 +9,6 @@ from . import (
     Snowflake,
     BaseModel,
 )
-from .guilds import Guild
 
 
 @dataclass

@@ -8,7 +8,11 @@ import typing
 pool = None
 
 JSONB = typing.NewType("JSONB", str)
-FTS = typing.NewType("FTS", str)
+
+
+class FTS:
+    def __init__(self, inner):
+        self.inner = inner
 
 
 def Snowflake(i):
