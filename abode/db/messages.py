@@ -36,8 +36,8 @@ class Message(BaseModel):
     #   refactor at the moment.
     _pk = "id"
     _refs = {
-        "guild": (Guild, ("guild_id", "id"), True),
-        "author": (User, ("author_id", "id"), True),
+        "guild": (Guild, ("guild_id", "id")),
+        "author": (User, ("author_id", "id")),
     }
     _fts = {"content"}
     _external_indexes = {}

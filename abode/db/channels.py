@@ -39,8 +39,8 @@ class Channel(BaseModel):
 
     _pk = "id"
     _refs = {
-        "guild": (Guild, ("guild_id", "id"), True),
-        "owner": (User, ("owner_id", "id"), True),
+        "guild": (Guild, ("guild_id", "id")),
+        "owner": (User, ("owner_id", "id")),
     }
     _external_indexes = {}
     _fts = set()

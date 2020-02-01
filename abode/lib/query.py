@@ -151,7 +151,7 @@ def _resolve_foreign_model_field(field_name, model, joins=None):
     if "." in field_name:
         field_name, rest = field_name.split(".", 1)
 
-    ref_model, on, _ = model._refs[foreign_field_name]
+    ref_model, on = model._refs[foreign_field_name]
 
     if not joins:
         joins = {}
@@ -172,7 +172,7 @@ def _resolve_foreign_model_field(field_name, model, joins=None):
     return (f"{table_name(ref_model)}.{field_name}", ref_type, joins)
 
 
-def resolve_model_field(field_name, model, use_subquery_optimize=False):
+def resolve_model_field(field_name, model):
     """
     Resolves a field name within a given model. This function will generate joins
     for cases where the target field is on a relation or is stored within an
@@ -245,9 +245,7 @@ def _compile_field_query_op(field_type, token, varidx):
         raise Exception(f"cannot query against field of type {field_type}")
 
 
-def _compile_token_for_query(
-    token, model, field=None, field_type=None, use_subquery_optimize=False, varidx=0
-):
+def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0):
     """
     Compile a single token into a single filter against the model.
 
@@ -255,9 +253,7 @@ def _compile_token_for_query(
     """
 
     if token["type"] == "label":
-        field, field_type, field_joins = resolve_model_field(
-            token["name"], model, use_subquery_optimize=use_subquery_optimize
-        )
+        field, field_type, field_joins = resolve_model_field(token["name"], model)
         token["value"]["exact"] = token["exact"]
         where, variables, joins, varidx = _compile_token_for_query(
             token["value"], model, field=field, field_type=field_type, varidx=varidx
@@ -323,15 +319,12 @@ def _compile_query_for_model(
     offset=None,
     order_by=None,
     order_dir="ASC",
-    use_subquery_optimize=False,
     include_foreign_data=False,
 ):
     parts = []
     varidx = 0
     for token in tokens:
-        a, b, c, varidx = _compile_token_for_query(
-            token, model, use_subquery_optimize=use_subquery_optimize, varidx=varidx
-        )
+        a, b, c, varidx = _compile_token_for_query(token, model, varidx=varidx)
         parts.append((a, b, c))
 
     where = []
