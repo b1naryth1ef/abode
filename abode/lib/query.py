@@ -74,6 +74,12 @@ class QueryParser:
                 return {"type": "string", "value": string}
             elif char == "(":
                 return {"type": "group", "value": self._parse()}
+            elif char == "-" and self._peek_char() == ">":
+                self._next_char()
+                value = self._parse()
+                if any(i["type"] != "symbol" for i in value):
+                    raise Exception("only symbols are allowed in a returns section")
+                return {"type": "return", "value": value}
             elif char == " ":
                 continue
             elif char == "/":
@@ -141,6 +147,7 @@ class QueryParser:
             # Injects 'AND' in between bare non-joiners
             if (
                 (node["type"] != "symbol" or node["value"] not in JOINERS)
+                and node["type"] != "return"
                 and previous_node
                 and (
                     previous_node["type"] != "symbol"
@@ -245,6 +252,26 @@ def _compile_field_query_op(field_type, token, varidx):
         raise Exception(f"cannot query against field of type {field_type}")
 
 
+def _compile_model_refs_join(model, value):
+    joins = {}
+    ref_model = model
+    while value.split(".", 1)[0] in ref_model._refs:
+        ref_model, join_on, _ = model._refs[value]
+
+        joins.update(
+            {
+                ref_model: f"{table_name(model)}.{join_on[0]} = {table_name(ref_model)}.{join_on[1]}"
+            }
+        )
+
+        if "." not in value:
+            return joins
+
+        value = value.split(".", 1)[1]
+
+    raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
+
+
 def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0):
     """
     Compile a single token into a single filter against the model.
@@ -255,62 +282,59 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
     if token["type"] == "label":
         field, field_type, field_joins = resolve_model_field(token["name"], model)
         token["value"]["exact"] = token["exact"]
-        where, variables, joins, varidx = _compile_token_for_query(
+        where, variables, joins, varidx, returns = _compile_token_for_query(
             token["value"], model, field=field, field_type=field_type, varidx=varidx
         )
         joins.update(field_joins)
-        return where, variables, joins, varidx
+        return where, variables, joins, varidx, returns
     elif token["type"] == "symbol":
         if token["value"] in ("AND", "OR", "NOT"):
-            return (token["value"], [], {}, varidx)
+            return (token["value"], [], {}, varidx, None)
         elif field:
             # messages.guild_id IN (SELECT id FROM guilds WHERE x LIKE y)
             varidx += 1
             op, arg, var = _compile_field_query_op(field_type, token, varidx)
-            return (f"{field} {op} {var}", [arg], {}, varidx)
+            return (f"{field} {op} {var}", [arg], {}, varidx, None)
         else:
-            value = token["value"]
-
-            joins = {}
-            ref_model = model
-            while value.split(".", 1)[0] in ref_model._refs:
-                ref_model, join_on, _ = model._refs[value]
-
-                joins.update(
-                    {
-                        ref_model: f"{table_name(model)}.{join_on[0]} = {table_name(ref_model)}.{join_on[1]}"
-                    }
-                )
-
-                if "." not in value:
-                    return (f"true", [], joins, varidx)
-
-                value = value.split(".", 1)[1]
-
-            raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
+            joins = _compile_model_refs_join(model, token["value"])
+            return (f"true", [], joins, varidx, None)
     elif token["type"] == "string" and field:
         varidx += 1
         op, arg, var = _compile_field_query_op(field_type, token, varidx)
-        return (f"{field} {op} {var}", [arg], {}, varidx)
+        return (f"{field} {op} {var}", [arg], {}, varidx, None)
     elif token["type"] == "regex" and field:
         varidx += 1
         op = "~"
         if "i" in token["flags"]:
             op = "~*"
-        return (f"{field} {op} ${varidx}", [token["value"]], {}, varidx)
+        return (
+            f"{field} {op} ${varidx}",
+            [token["value"]],
+            {},
+            varidx,
+            None,
+        )
     elif token["type"] == "group":
         where = []
         variables = []
         joins = {}
         for child_token in token["value"]:
             child_token["exact"] = token.get("exact", False)
-            where_part, variables_part, joins_part, varidx = _compile_token_for_query(
+            (
+                where_part,
+                variables_part,
+                joins_part,
+                varidx,
+                returns,
+            ) = _compile_token_for_query(
                 child_token, model, field=field, field_type=field_type, varidx=varidx
             )
             joins.update(joins_part)
             where.append(where_part)
             variables.extend(variables_part)
-        return "(" + " ".join(where) + ")", variables, joins, varidx
+        return ("(" + " ".join(where) + ")", variables, joins, varidx, returns)
+    elif token["type"] == "return":
+        return (None, None, None, varidx, [i["value"] for i in token["value"]])
     else:
         assert False
 
@@ -329,12 +353,22 @@ def _compile_query_for_model(
     order_by=None,
     order_dir="ASC",
     include_foreign_data=False,
+    returns=False,
 ):
+    return_fields = None
     parts = []
     varidx = 0
     for token in tokens:
-        a, b, c, varidx = _compile_token_for_query(token, model, varidx=varidx)
-        parts.append((a, b, c))
+        a, b, c, varidx, _returns = _compile_token_for_query(
+            token, model, varidx=varidx
+        )
+        if _returns is not None:
+            if return_fields is not None:
+                raise Exception("multiple returns? bad juju!")
+            return_fields = tuple(_returns)
+            continue
+        if a is not None:
+            parts.append((a, b, c))
 
     where = []
     variables = []
@@ -354,6 +388,12 @@ def _compile_query_for_model(
         order_by = ""
 
     models = [model]
+    if return_fields:
+        for field in return_fields:
+            _, _, joins_part = resolve_model_field(field, model)
+            joins.update(joins_part)
+            models.extend(joins.keys())
+
     if include_foreign_data:
         for ref_model, join_on, always in model._refs.values():
             if ref_model in joins:
@@ -394,11 +434,15 @@ def _compile_query_for_model(
 
     suffix = "".join(suffix)
 
-    return (
-        f"SELECT {selectors} FROM {table_name(model)}{joins}{where}{order_by}{suffix}",
-        tuple(variables),
-        tuple(models),
+    query = (
+        f"SELECT {selectors} FROM {table_name(model)}{joins}{where}{order_by}{suffix}"
     )
+    variables = tuple(variables)
+    models = tuple(models)
+
+    if returns:
+        return query, variables, models, return_fields
+    return query, variables, models
 
 
 def compile_query(query, model, **kwargs):

@@ -1,18 +1,47 @@
 const models = ["message", "emoji", "channel", "guild", "user"];
-const templates = {};
+const templates = { "row": null };
 
 const env = nunjucks.configure({ autoescape: true });
 env.addFilter("discrim", (str) => {
     return ('0000' + str).slice(-4);
 });
 
-for (const model of models) {
+for (const model of Object.keys(templates).concat(models)) {
     fetch(`/templates/${model}.html`).then((response) => {
         return response.text();
     }).then((body) => {
         templates[model] = body;
         console.log(body);
     });
+}
+
+function split(str, separator, limit) {
+    str = str.split(separator);
+
+    if (str.length > limit) {
+        var ret = str.splice(0, limit);
+        ret.push(str.join(separator));
+
+        return ret;
+    }
+
+    return str;
+}
+
+
+function getPath(object, path) {
+    if (path.includes(".")) {
+        let [field, rest] = split(path, ".", 1);
+        return getPath(object[field], rest);
+    }
+    return object[path];
+}
+
+function renderTableRow(fields, rowData) {
+    let row = fields.map((field) => {
+        return getPath(rowData, field);
+    });
+    return nunjucks.renderString(templates["row"], { row })
 }
 
 function renderModelRow(name, row) {
@@ -49,8 +78,12 @@ function handleSearchChange(event) {
                     Object.assign(rowData, { [model]: data.results[model][idx] });
                 });
 
-                console.log(rowData);
-                html = html + renderModelRow(currentModel, rowData);
+                if (data.fields) {
+                    html = html + renderTableRow(data.fields, rowData);
+                } else {
+                    html = html + renderModelRow(currentModel, rowData);
+                }
+
             }
             $("#results").html(html);
         } else if (data.error) {

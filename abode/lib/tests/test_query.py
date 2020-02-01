@@ -80,6 +80,34 @@ def test_parse_basic_queries():
         }
     ]
 
+    assert QueryParser.parsed("-> a b c") == [
+        {
+            "type": "return",
+            "value": [
+                {"type": "symbol", "value": "a"},
+                {"type": "symbol", "value": "b"},
+                {"type": "symbol", "value": "c"},
+            ],
+        }
+    ]
+
+    assert QueryParser.parsed("x:y -> a b c") == [
+        {
+            "type": "label",
+            "name": "x",
+            "value": {"type": "symbol", "value": "y"},
+            "exact": False,
+        },
+        {
+            "type": "return",
+            "value": [
+                {"type": "symbol", "value": "a"},
+                {"type": "symbol", "value": "b"},
+                {"type": "symbol", "value": "c"},
+            ],
+        },
+    ]
+
 
 def test_parse_complex_queries():
     assert QueryParser.parsed(
@@ -231,5 +259,23 @@ def test_compile_complex_queries():
         f"SELECT guilds.* FROM guilds WHERE guilds.name ~* $1",
         ("xxx.*xxx",),
         (Guild,),
+    )
+
+    guild_selector = _compile_selector(Guild)
+    user_selector = _compile_selector(User)
+    assert compile_query(
+        "name: /xxx.*xxx/i -> name owner.name", Guild, returns=True
+    ) == (
+        f"SELECT {guild_selector}, {user_selector} FROM guilds JOIN users ON guilds.owner_id = users.id WHERE guilds.name ~* $1",
+        ("xxx.*xxx",),
+        (Guild, User),
+        ("name", "owner.name"),
+    )
+
+    assert compile_query("name: /xxx.*xxx/i ->", Guild, returns=True) == (
+        f"SELECT guilds.* FROM guilds WHERE guilds.name ~* $1",
+        ("xxx.*xxx",),
+        (Guild,),
+        (),
     )
 

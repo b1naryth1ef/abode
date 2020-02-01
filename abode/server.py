@@ -47,7 +47,7 @@ async def route_search(request, model):
 
     query = request.json.get("query", "")
     try:
-        sql, args, models = compile_query(
+        sql, args, models, return_fields = compile_query(
             query,
             model,
             limit=limit,
@@ -55,6 +55,7 @@ async def route_search(request, model):
             order_by=order_by,
             order_dir=order_dir,
             include_foreign_data=include_foreign_data,
+            returns=True,
         )
     except Exception as e:
         return json({"error": e})
@@ -83,6 +84,7 @@ async def route_search(request, model):
                     model.__name__.lower(): [i[idx].serialize() for i in results]
                     for idx, model in enumerate(models)
                 },
+                "fields": return_fields,
                 "_debug": _debug,
             }
         )
