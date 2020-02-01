@@ -74,7 +74,7 @@ class QueryParser:
                 return {"type": "string", "value": string}
             elif char == "(":
                 return {"type": "group", "value": self._parse()}
-            elif char == "-" and self._peek_char() == ">":
+            elif char in ("-", "=") and self._peek_char() == ">":
                 self._next_char()
                 value = self._parse()
                 if any(i["type"] != "symbol" for i in value):
