@@ -387,17 +387,17 @@ def _compile_query_for_model(
     else:
         order_by = ""
 
-    models = [model]
+    models = {model: None}
     if return_fields:
         for field in return_fields:
             _, _, joins_part = resolve_model_field(field, model)
             joins.update(joins_part)
-            models.extend(joins.keys())
+            models.update({k: None for k in joins.keys()})
 
     if include_foreign_data:
         for ref_model, join_on, always in model._refs.values():
             if ref_model in joins:
-                models.append(ref_model)
+                models[ref_model] = None
                 continue
 
             if always:
@@ -406,10 +406,10 @@ def _compile_query_for_model(
                         ref_model: f"{table_name(model)}.{join_on[0]} = {table_name(ref_model)}.{join_on[1]}"
                     }
                 )
-                models.append(ref_model)
+                models[ref_model] = None
 
     if len(models) > 1:
-        selectors = ", ".join(_compile_selector(model) for model in models)
+        selectors = ", ".join(_compile_selector(model) for model in models.keys())
     else:
         selectors = f"{table_name(model)}.*"
 
@@ -438,7 +438,7 @@ def _compile_query_for_model(
         f"SELECT {selectors} FROM {table_name(model)}{joins}{where}{order_by}{suffix}"
     )
     variables = tuple(variables)
-    models = tuple(models)
+    models = tuple(models.keys())
 
     if returns:
         return query, variables, models, return_fields
