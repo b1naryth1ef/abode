@@ -1,7 +1,7 @@
 import time
 from sanic import Sanic
 from sanic.response import json
-from abode.lib.query import compile_query, decode_query_record
+from abode.lib.query import compile_query, decode_query_results
 from abode.db.guilds import Guild
 from abode.db.messages import Message
 from abode.db.emoji import Emoji
@@ -77,16 +77,7 @@ async def route_search(request, model):
         return json({"error": e, "_debug": _debug})
 
     try:
-        results = [list(decode_query_record(row, models)) for row in results]
-        return json(
-            {
-                "results": {
-                    model.__name__.lower(): [i[idx].serialize() for i in results]
-                    for idx, model in enumerate(models)
-                },
-                "fields": return_fields,
-                "_debug": _debug,
-            }
-        )
+        results = decode_query_results(models, return_fields, results)
+        return json({"results": results, "_debug": _debug})
     except Exception as e:
         return json({"error": e, "_debug": _debug})

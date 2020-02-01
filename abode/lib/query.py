@@ -457,3 +457,50 @@ def decode_query_record(record, models):
         model_data = record[idx : idx + num_fields]
         idx += num_fields
         yield model.from_record(model_data)
+
+
+def _resolve_return_field(model, field):
+    if "." in field:
+        field, rest = field.split(".", 1)
+        model = model._refs[field][0]
+        return _resolve_return_field(model, rest)
+    return model, field
+
+
+def decode_query_results(models, return_fields, results):
+    # TODO: leaky af
+    from abode.db import convert_to_type
+
+    # I guess why not
+    if return_fields is None:
+        return_fields = [i.name for i in dataclasses.fields(models[0])]
+
+    record_offsets = {}
+    idx = 0
+    for model in models:
+        record_offsets[model] = idx
+        idx += len(dataclasses.fields(model))
+
+    column_offsets = {}
+    for field in return_fields:
+        model, field = _resolve_return_field(models[0], field)
+        fields = dataclasses.fields(model)
+        offset = record_offsets[model] + [i.name for i in fields].index(field)
+        column_offsets[offset] = next(i for i in fields if i.name == field)
+
+    rows = []
+    for result_row in results:
+        rows.append(
+            [
+                convert_to_type(
+                    convert_to_type(result_row[offset], field.type, from_pg=True),
+                    field.type,
+                    to_js=True,
+                )
+                for offset, field in column_offsets.items()
+            ]
+        )
+
+    return rows
+
+    # fields, results = decode_query_results(models, return_fields, results)

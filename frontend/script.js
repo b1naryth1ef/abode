@@ -1,5 +1,5 @@
 const models = ["message", "emoji", "channel", "guild", "user"];
-const templates = { "row": null };
+const templates = { "row": null, "results": null };
 
 const env = nunjucks.configure({ autoescape: true });
 env.addFilter("discrim", (str) => {
@@ -48,11 +48,22 @@ function renderModelRow(name, row) {
     return nunjucks.renderString(templates[name], { row });
 }
 
+function renderResult(results) {
+    $("#error").hide();
+    $("#results").html(nunjucks.renderString(templates["results"], {
+        rows: results,
+    }))
+}
+
+function renderError(error) {
+    $("#error").show().text(error);
+}
+
 function handleSearchChange(event) {
     var currentModel = $("#model option:selected").text();
     var query = {
         "query": $(event.target).val(),
-        "limit": 250,
+        "limit": 1000,
         "order_by": "id",
         "order_dir": "DESC",
     };
@@ -64,31 +75,36 @@ function handleSearchChange(event) {
         return response.json();
     }).then((data) => {
         console.log("[Debug]", data);
-
-        if (data.results[currentModel]) {
-            var html = "";
-
-            for (const idx in data.results[currentModel]) {
-                let rowData = data.results[currentModel][idx];
-
-                Object.keys(data.results).map((model) => {
-                    if (model == currentModel) {
-                        return;
-                    }
-                    Object.assign(rowData, { [model]: data.results[model][idx] });
-                });
-
-                if (data.fields) {
-                    html = html + renderTableRow(data.fields, rowData);
-                } else {
-                    html = html + renderModelRow(currentModel, rowData);
-                }
-
-            }
-            $("#results").html(html);
+        if (data.results && !data.error) {
+            renderResult(data.results);
         } else if (data.error) {
-            console.error(data)
+            renderError(data.error);
         }
+
+        // if (data.results[currentModel]) {
+        //     var html = "";
+
+        //     for (const idx in data.results[currentModel]) {
+        //         let rowData = data.results[currentModel][idx];
+
+        //         Object.keys(data.results).map((model) => {
+        //             if (model == currentModel) {
+        //                 return;
+        //             }
+        //             Object.assign(rowData, { [model]: data.results[model][idx] });
+        //         });
+
+        //         if (data.fields) {
+        //             html = html + renderTableRow(data.fields, rowData);
+        //         } else {
+        //             html = html + renderModelRow(currentModel, rowData);
+        //         }
+
+        //     }
+        //     $("#results").html(html);
+        // } else if (data.error) {
+        //     console.error(data)
+        // }
     });
 }
 

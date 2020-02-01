@@ -11,6 +11,7 @@ from . import (
 )
 from .users import User, upsert_user
 from .guilds import Guild
+from .channels import Channel
 
 
 @dataclass
@@ -38,6 +39,7 @@ class Message(BaseModel):
     _refs = {
         "guild": (Guild, ("guild_id", "id"), True),
         "author": (User, ("author_id", "id"), True),
+        "channel": (Channel, ["channel_id", "id"], True),
     }
     _fts = {"content"}
 

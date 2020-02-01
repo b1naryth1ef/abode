@@ -4,6 +4,7 @@ import os
 import dataclasses
 import json
 import typing
+from datetime import datetime
 
 pool = None
 
@@ -121,6 +122,20 @@ def convert_to_type(value, target_type, to_pg=False, from_pg=False, to_js=False)
         else:
             assert False
 
+    if (
+        to_js
+        and target_type == Snowflake
+        or (target_type == typing.Optional[Snowflake] and value is not None)
+    ):
+        return str(value)
+
+    if (
+        to_js
+        and target_type == datetime
+        or (target_type == typing.Optional[datetime] and value is not None)
+    ):
+        return value.isoformat()
+
     if typing.get_origin(target_type) == list:
         return list(value)
 
@@ -132,9 +147,6 @@ def convert_to_type(value, target_type, to_pg=False, from_pg=False, to_js=False)
 
     if from_pg and target_type == JSONB:
         return json.loads(value)
-
-    if to_js and target_type == Snowflake or target_type == typing.Optional[Snowflake]:
-        return str(value)
 
     try:
         return target_type(value)
