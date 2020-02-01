@@ -37,27 +37,30 @@ class QueryParser:
             return None
         return self.buffer[self.idx + n]
 
-    def _parse_string(self):
+    def _parse_string(self, chr='"'):
         escaped = False
         parts = ""
         while True:
             char = self._next_char()
             assert char is not None
-            if char == '"':
+            if char == chr:
                 if escaped:
                     escaped = False
                 else:
                     return parts
-            elif char == "\\":
+            elif char == "\\" and not escaped:
                 escaped = True
                 continue
+            elif escaped:
+                escaped = False
+                parts += "\\"
             parts += char
 
     def _parse_symbol(self):
         parts = ""
         while True:
             char = self._peek_char()
-            if char in (" ", ":", "=", '"', "(", ")", None):
+            if char in (" ", ":", "=", '"', "(", ")", "/", None):
                 return parts
             parts += self._next_char()
 
@@ -73,6 +76,18 @@ class QueryParser:
                 return {"type": "group", "value": self._parse()}
             elif char == " ":
                 continue
+            elif char == "/":
+                value = self._parse_string("/")
+
+                flags = []
+                while self._peek_char() in ("i",):
+                    flags.append(self._next_char())
+
+                return {
+                    "type": "regex",
+                    "value": value,
+                    "flags": flags,
+                }
             else:
                 self.idx -= 1
                 symbol = self._parse_symbol()
@@ -136,13 +151,6 @@ class QueryParser:
             previous_node = node
             result.append(node)
         return result
-
-
-class SubqueryOptimized(object):
-    def __init__(self, inner, ref_model, join):
-        self.inner = inner
-        self.ref_model = ref_model
-        self.join = join
 
 
 def _resolve_foreign_model_field(field_name, model, joins=None):
@@ -255,16 +263,6 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
     elif token["type"] == "symbol":
         if token["value"] in ("AND", "OR", "NOT"):
             return (token["value"], [], {}, varidx)
-        elif isinstance(field_type, SubqueryOptimized):
-            varidx += 1
-            op, arg, var = _compile_field_query_op(field_type.inner, token, varidx)
-            return (
-                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM "
-                f"{table_name(field_type.ref_model)} WHERE {field} {op} {var})",
-                [arg],
-                {},
-                varidx,
-            )
         elif field:
             # messages.guild_id IN (SELECT id FROM guilds WHERE x LIKE y)
             varidx += 1
@@ -291,19 +289,15 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
 
             raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
     elif token["type"] == "string" and field:
-        if isinstance(field_type, SubqueryOptimized):
-            varidx += 1
-            op, arg, var = _compile_field_query_op(field_type.inner, token, varidx)
-            return (
-                f"{table_name(model)}.{field_type.join[0]} IN (SELECT {field_type.join[1]} FROM "
-                f"{table_name(field_type.ref_model)} WHERE {field} {op} {var})",
-                [arg],
-                {},
-                varidx,
-            )
         varidx += 1
         op, arg, var = _compile_field_query_op(field_type, token, varidx)
         return (f"{field} {op} {var}", [arg], {}, varidx)
+    elif token["type"] == "regex" and field:
+        varidx += 1
+        op = "~"
+        if "i" in token["flags"]:
+            op = "~*"
+        return (f"{field} {op} ${varidx}", [token["value"]], {}, varidx)
     elif token["type"] == "group":
         where = []
         variables = []

@@ -62,6 +62,24 @@ def test_parse_basic_queries():
         }
     ]
 
+    assert QueryParser.parsed("x:/.* lol \\d me daddy/") == [
+        {
+            "type": "label",
+            "name": "x",
+            "value": {"type": "regex", "value": ".* lol \\d me daddy", "flags": []},
+            "exact": False,
+        }
+    ]
+
+    assert QueryParser.parsed("x:/.* lol \\d me daddy/i") == [
+        {
+            "type": "label",
+            "name": "x",
+            "value": {"type": "regex", "value": ".* lol \\d me daddy", "flags": ["i"]},
+            "exact": False,
+        }
+    ]
+
 
 def test_parse_complex_queries():
     assert QueryParser.parsed(
@@ -208,3 +226,10 @@ def test_compile_complex_queries():
         (1,),
         (Message, Guild, User),
     )
+
+    assert compile_query("name: /xxx.*xxx/i", Guild) == (
+        f"SELECT guilds.* FROM guilds WHERE guilds.name ~* $1",
+        ("xxx.*xxx",),
+        (Guild,),
+    )
+
