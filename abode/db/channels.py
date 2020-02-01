@@ -39,8 +39,8 @@ class Channel(BaseModel):
 
     _pk = "id"
     _refs = {
-        "guild": (Guild, ("guild_id", "id")),
-        "owner": (User, ("owner_id", "id")),
+        "guild": (Guild, ("guild_id", "id"), False),
+        "owner": (User, ("owner_id", "id"), False),
     }
     _fts = set()
 

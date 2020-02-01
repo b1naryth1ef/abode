@@ -1,4 +1,4 @@
-const models = ["message"];
+const models = ["message", "emoji", "channel", "guild", "user"];
 const templates = {};
 
 const env = nunjucks.configure({ autoescape: true });
@@ -19,12 +19,13 @@ function renderModelRow(name, row) {
     return nunjucks.renderString(templates[name], { row });
 }
 
-const currentModel = "message";
-
 function handleSearchChange(event) {
+    var currentModel = $("#model option:selected").text();
     var query = {
         "query": $(event.target).val(),
         "limit": 250,
+        "order_by": "id",
+        "order_dir": "DESC",
     };
 
     fetch(`/search/${currentModel}`, {
@@ -33,7 +34,7 @@ function handleSearchChange(event) {
     }).then((response) => {
         return response.json();
     }).then((data) => {
-        console.log("[Debug]", data._debug);
+        console.log("[Debug]", data);
 
         if (data.results[currentModel]) {
             var html = "";
@@ -48,7 +49,8 @@ function handleSearchChange(event) {
                     Object.assign(rowData, { [model]: data.results[model][idx] });
                 });
 
-                html = html + renderModelRow('message', rowData);
+                console.log(rowData);
+                html = html + renderModelRow(currentModel, rowData);
             }
             $("#results").html(html);
         } else if (data.error) {
@@ -58,6 +60,10 @@ function handleSearchChange(event) {
 }
 
 $(document).ready(function () {
+    for (model of models) {
+        $("#model").append(`<option value="${model}">${model}</option>`);
+    }
+
     var val = $("#search").val();
     $("#search").focus().val("").val(val);
     $("#search").keyup((e) => {

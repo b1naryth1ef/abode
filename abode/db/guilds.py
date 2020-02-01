@@ -29,7 +29,7 @@ class Guild(BaseModel):
     is_currently_joined: bool = None
 
     _pk = "id"
-    _refs = {"owner": (User, ("owner_id", "id"))}
+    _refs = {"owner": (User, ("owner_id", "id"), True)}
     _fts = set()
 
     @classmethod

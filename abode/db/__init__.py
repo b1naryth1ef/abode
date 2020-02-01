@@ -110,7 +110,7 @@ def build_select_query(instance, where=None):
     """
 
 
-def convert_to_type(value, target_type, to_pg=False, from_pg=False):
+def convert_to_type(value, target_type, to_pg=False, from_pg=False, to_js=False):
     if typing.get_origin(target_type) is typing.Union:
         if type(None) in typing.get_args(target_type):
             if value is None:
@@ -133,6 +133,9 @@ def convert_to_type(value, target_type, to_pg=False, from_pg=False):
     if from_pg and target_type == JSONB:
         return json.loads(value)
 
+    if to_js and target_type == Snowflake or target_type == typing.Optional[Snowflake]:
+        return str(value)
+
     try:
         return target_type(value)
     except Exception:
@@ -147,6 +150,14 @@ def table_name(model):
 
 
 class BaseModel:
+    def serialize(self, **kwargs):
+        return {
+            field.name: convert_to_type(
+                getattr(self, field.name), field.type, to_js=True
+            )
+            for field in dataclasses.fields(self)
+        }
+
     def diff(self, other):
         for field in dataclasses.fields(self):
             if getattr(other, field.name) != getattr(self, field.name):

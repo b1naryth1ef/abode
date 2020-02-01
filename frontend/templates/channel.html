@@ -1,0 +1,7 @@
+<div>
+    {% if row.type == 0 or row.type == 2 or row.type == 4 %}
+    <b> {{ row.name }} </b> ({{ row.guild.name }})
+    {% else %}
+    <b> {{ row.name }} </b>
+    {% endif %}
+</div>

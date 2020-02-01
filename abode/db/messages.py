@@ -36,10 +36,14 @@ class Message(BaseModel):
     #   refactor at the moment.
     _pk = "id"
     _refs = {
-        "guild": (Guild, ("guild_id", "id")),
-        "author": (User, ("author_id", "id")),
+        "guild": (Guild, ("guild_id", "id"), True),
+        "author": (User, ("author_id", "id"), True),
     }
     _fts = {"content"}
+
+    def autofield_has_attachment(self):
+        ""
+        pass
 
     @classmethod
     def from_discord(cls, message, deleted=False):

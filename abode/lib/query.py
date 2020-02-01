@@ -151,7 +151,7 @@ def _resolve_foreign_model_field(field_name, model, joins=None):
     if "." in field_name:
         field_name, rest = field_name.split(".", 1)
 
-    ref_model, on = model._refs[foreign_field_name]
+    ref_model, on, _ = model._refs[foreign_field_name]
 
     if not joins:
         joins = {}
@@ -273,21 +273,22 @@ def _compile_token_for_query(token, model, field=None, field_type=None, varidx=0
         else:
             value = token["value"]
 
-            # TODO: this is a hackfix to allow people to force-join refs, but
-            #  its not recursive and should be handled in a better way.
-            if value in model._refs:
-                ref_model, on = model._refs[value]
+            joins = {}
+            ref_model = model
+            while value.split(".", 1)[0] in ref_model._refs:
+                ref_model, join_on, _ = model._refs[value]
 
-                return (
-                    "true",
-                    [],
+                joins.update(
                     {
-                        ref_model: f"{table_name(model)}.{on[0]} = {table_name(ref_model)}.{on[1]}"
-                    },
-                    varidx,
+                        ref_model: f"{table_name(model)}.{join_on[0]} = {table_name(ref_model)}.{join_on[1]}"
+                    }
                 )
 
-            print(resolve_model_field(value, model))
+                if "." not in value:
+                    return (f"true", [], joins, varidx)
+
+                value = value.split(".", 1)[1]
+
             raise Exception(f"unlabeled symbol cannot be matched: `{value}`")
     elif token["type"] == "string" and field:
         if isinstance(field_type, SubqueryOptimized):
@@ -360,14 +361,18 @@ def _compile_query_for_model(
 
     models = [model]
     if include_foreign_data:
-        for ref_model, join_on in model._refs.values():
-            if ref_model not in joins:
+        for ref_model, join_on, always in model._refs.values():
+            if ref_model in joins:
+                models.append(ref_model)
+                continue
+
+            if always:
                 joins.update(
                     {
                         ref_model: f"{table_name(model)}.{join_on[0]} = {table_name(ref_model)}.{join_on[1]}"
                     }
                 )
-            models.append(ref_model)
+                models.append(ref_model)
 
     if len(models) > 1:
         selectors = ", ".join(_compile_selector(model) for model in models)

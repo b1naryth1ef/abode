@@ -80,7 +80,7 @@ async def route_search(request, model):
         return json(
             {
                 "results": {
-                    model.__name__.lower(): [i[idx] for i in results]
+                    model.__name__.lower(): [i[idx].serialize() for i in results]
                     for idx, model in enumerate(models)
                 },
                 "_debug": _debug,
