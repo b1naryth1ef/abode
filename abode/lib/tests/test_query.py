@@ -2,6 +2,7 @@ from abode.lib.query import QueryParser, compile_query, _compile_selector
 from abode.db.guilds import Guild
 from abode.db.messages import Message
 from abode.db.users import User
+from abode.db.channels import Channel
 
 
 def test_parse_basic_queries():
@@ -218,7 +219,7 @@ def test_compile_complex_queries():
     )
 
     assert compile_query("content:yeet", Message) == (
-        "SELECT messages.* FROM messages WHERE to_tsvector('english', messages.content) @@ to_tsquery($1)",
+        "SELECT messages.* FROM messages WHERE to_tsvector('english', messages.content) @@ phraseto_tsquery($1)",
         ("yeet",),
         (Message,),
     )
@@ -240,19 +241,22 @@ def test_compile_complex_queries():
     message_selector = _compile_selector(Message)
     guild_selector = _compile_selector(Guild)
     author_selector = _compile_selector(User)
+    channel_selector = _compile_selector(Channel)
 
     assert compile_query("", Message, include_foreign_data=True) == (
-        f"SELECT {message_selector}, {guild_selector}, {author_selector} FROM messages JOIN guilds ON messages.guild_id = guilds.id"
-        " JOIN users ON messages.author_id = users.id",
+        f"SELECT {message_selector}, {guild_selector}, {author_selector}, {channel_selector} FROM messages JOIN guilds "
+        "ON messages.guild_id = guilds.id JOIN users ON messages.author_id = users.id JOIN channels ON "
+        "messages.channel_id = channels.id",
         (),
-        (Message, Guild, User),
+        (Message, Guild, User, Channel),
     )
 
     assert compile_query("guild.id:1", Message, include_foreign_data=True) == (
-        f"SELECT {message_selector}, {guild_selector}, {author_selector} FROM messages JOIN guilds ON messages.guild_id = guilds.id"
-        " JOIN users ON messages.author_id = users.id WHERE guilds.id = $1",
+        f"SELECT {message_selector}, {guild_selector}, {author_selector}, {channel_selector} FROM messages JOIN guilds"
+        " ON messages.guild_id = guilds.id JOIN users ON messages.author_id = users.id JOIN channels ON "
+        "messages.channel_id = channels.id WHERE guilds.id = $1",
         (1,),
-        (Message, Guild, User),
+        (Message, Guild, User, Channel),
     )
 
     assert compile_query("name: /xxx.*xxx/i", Guild) == (

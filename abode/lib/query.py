@@ -231,7 +231,9 @@ def _compile_field_query_op(field_type, token, varidx):
         field_type = next(i for i in args if i != type(None))
 
     if isinstance(field_type, FTS):
-        return ("@@", token["value"], f"to_tsquery({var})")
+        if token.get("exact"):
+            return ("=", token["value"], var)
+        return ("@@", token["value"], f"phraseto_tsquery({var})")
     elif field_type == Snowflake:
         return ("=", Snowflake(token["value"]), var)
     elif field_type == str or field_type == typing.Optional[str]:
