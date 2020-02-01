@@ -8,6 +8,7 @@ from abode.db.emoji import Emoji
 from abode.db.users import User
 from abode.db.channels import Channel
 from abode.db import get_pool
+from traceback import format_exc
 
 app = Sanic()
 app.static("/", "./frontend/index.html")
@@ -57,8 +58,8 @@ async def route_search(request, model):
             include_foreign_data=include_foreign_data,
             returns=True,
         )
-    except Exception as e:
-        return json({"error": e})
+    except Exception:
+        return json({"error": format_exc()})
 
     _debug = {
         "args": args,
@@ -73,11 +74,11 @@ async def route_search(request, model):
             start = time.time()
             results = await conn.fetch(sql, *args)
             _debug["ms"] = int((time.time() - start) * 1000)
-    except Exception as e:
-        return json({"error": e, "_debug": _debug})
+    except Exception:
+        return json({"error": format_exc(), "_debug": _debug})
 
     try:
         results, field_names = decode_query_results(models, return_fields, results)
         return json({"results": results, "fields": field_names, "_debug": _debug})
-    except Exception as e:
-        return json({"error": e, "_debug": _debug})
+    except Exception:
+        return json({"error": format_exc(), "_debug": _debug})
