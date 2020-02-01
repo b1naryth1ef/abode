@@ -77,7 +77,7 @@ async def route_search(request, model):
         return json({"error": e, "_debug": _debug})
 
     try:
-        results = decode_query_results(models, return_fields, results)
-        return json({"results": results, "_debug": _debug})
+        results, field_names = decode_query_results(models, return_fields, results)
+        return json({"results": results, "fields": field_names, "_debug": _debug})
     except Exception as e:
         return json({"error": e, "_debug": _debug})

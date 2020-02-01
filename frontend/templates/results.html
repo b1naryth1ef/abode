@@ -1,4 +1,10 @@
 <table>
+    <tr>
+        {% for field in fields %}
+        <th>{{ field }}</th>
+        {% endfor %}
+    </tr>
+
     {% for row in rows %}
     <tr>
         {% for col in row %}

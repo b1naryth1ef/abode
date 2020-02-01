@@ -501,6 +501,6 @@ def decode_query_results(models, return_fields, results):
             ]
         )
 
-    return rows
+    return rows, return_fields
 
     # fields, results = decode_query_results(models, return_fields, results)

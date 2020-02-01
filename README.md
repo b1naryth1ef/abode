@@ -30,7 +30,8 @@ abode is built around a custom search query language, which is intentionally sim
 | field:value | fuzzy match of value |
 | field:"value" | case insensitive exact match of value |
 | field="value" | case sensitive exact match of value |
-| field:(x y) | fuzzy match of x or y |
+| field:(x y) | fuzzy match of x and y |
+| field:(x OR y) | fuzzy match of x or y |
 | field:x AND NOT field:y | fuzzy match of x and not y |
 | (field:a AND field:b) OR (field:c AND field:d) | fuzzy match of a and b or c and d |
 | -> x y z | select fields x, y, and z |
