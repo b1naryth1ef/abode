@@ -37,7 +37,7 @@ class Message(BaseModel):
     #   refactor at the moment.
     _pk = "id"
     _refs = {
-        "guild": (Guild, ("guild_id", "id"), True),
+        "guild": (Guild, ("guild_id", "id"), False),
         "author": (User, ("author_id", "id"), True),
         "channel": (Channel, ["channel_id", "id"], True),
     }

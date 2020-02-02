@@ -8,7 +8,12 @@ from datetime import datetime
 
 pool = None
 
-JSONB = typing.NewType("JSONB", str)
+
+T = typing.TypeVar("T")
+
+
+class JSONB(typing.Generic[T]):
+    inner: T
 
 
 class FTS:
@@ -142,10 +147,10 @@ def convert_to_type(value, target_type, to_pg=False, from_pg=False, to_js=False)
     if type(value) == target_type:
         return value
 
-    if to_pg and target_type == JSONB:
+    if to_pg and typing.get_origin(target_type) == JSONB:
         return json.dumps(value)
 
-    if from_pg and target_type == JSONB:
+    if from_pg and typing.get_origin(target_type) == JSONB:
         return json.loads(value)
 
     try:

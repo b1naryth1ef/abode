@@ -244,11 +244,11 @@ def test_compile_complex_queries():
     channel_selector = _compile_selector(Channel)
 
     assert compile_query("", Message, include_foreign_data=True) == (
-        f"SELECT {message_selector}, {guild_selector}, {author_selector}, {channel_selector} FROM messages JOIN guilds "
-        "ON messages.guild_id = guilds.id JOIN users ON messages.author_id = users.id JOIN channels ON "
+        f"SELECT {message_selector}, {author_selector}, {channel_selector} FROM messages "
+        "JOIN users ON messages.author_id = users.id JOIN channels ON "
         "messages.channel_id = channels.id",
         (),
-        (Message, Guild, User, Channel),
+        (Message, User, Channel),
     )
 
     assert compile_query("guild.id:1", Message, include_foreign_data=True) == (

@@ -10,7 +10,7 @@ This query is returned in a form that can be easily passed to SQL interfaces
 """
 import dataclasses
 import typing
-from abode.db import table_name, FTS, Snowflake
+from abode.db import table_name, JSONB, FTS, Snowflake
 
 JOINERS = ("AND", "OR")
 
@@ -237,13 +237,22 @@ def _compile_field_query_op(field, field_type, token, varidx):
         if token.get("exact"):
             return (field, "=", token["value"], var)
         elif token["type"] == "string":
-            return (field, "ILIKE", token["value"], var)
+            # TODO: jank replace
+            return (field, "ILIKE", token["value"].replace("*", "%"), var)
         return (
             f"to_tsvector('english', {field})",
             "@@",
             token["value"],
             f"phraseto_tsquery({var})",
         )
+    elif typing.get_origin(field_type) == JSONB:
+        (inner,) = typing.get_args(field_type)
+
+        if typing.get_origin(inner) == list:
+            (type_fn,) = typing.get_args(inner)
+            return (field, "@>", type_fn(token["value"]), var)
+
+        assert False
     elif field_type == Snowflake:
         return (field, "=", Snowflake(token["value"]), var)
     elif field_type == str or field_type == typing.Optional[str]:
@@ -270,6 +279,9 @@ def _compile_field_query_op(field, field_type, token, varidx):
         )
     else:
         print(token)
+        print(field_type)
+        print(typing.get_origin(field_type))
+        print(typing.get_args(field_type))
         raise Exception(f"cannot query against field of type {field_type}")
 
 

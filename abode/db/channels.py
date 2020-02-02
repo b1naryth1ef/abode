@@ -1,6 +1,6 @@
 import discord
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 from .guilds import Guild
 from .users import User
 from . import (
@@ -33,7 +33,7 @@ class Channel(BaseModel):
     user_limit: Optional[int] = None
 
     # DMs
-    recipients: Optional[JSONB] = None
+    recipients: Optional[JSONB[List[str]]] = None
     owner_id: Optional[Snowflake] = None
     icon: Optional[str] = None
 
